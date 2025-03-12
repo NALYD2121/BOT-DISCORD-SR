@@ -115,7 +115,15 @@ app.use(express.json());
 
 // Route racine
 app.get("/", (req, res) => {
-    res.send("Bot en ligne !");
+    res.json({
+        status: "online",
+        message: "Bot en ligne !",
+        routes: [
+            "/api/mods/ARME",
+            "/api/mods/VEHICULE",
+            "/api/mods/PERSONNAGE"
+        ]
+    });
 });
 
 // Route pour Uptime Robot
@@ -316,16 +324,9 @@ client.once("ready", async () => {
         console.log("Commandes slash enregistrées avec succès");
 
         // Démarrage du serveur Express une fois le bot connecté
-        const PORT = 3001; // Port fixe différent de 8080 et 3000
-        app.listen(PORT, "0.0.0.0", () => {
+        const PORT = process.env.PORT || 3000;
+        app.listen(PORT, () => {
             console.log(`Serveur web démarré sur le port ${PORT}`);
-        }).on('error', (error) => {
-            if (error.code === 'EADDRINUSE') {
-                console.error(`Le port ${PORT} est occupé, tentative avec le port ${PORT + 1}`);
-                app.listen(PORT + 1, "0.0.0.0");
-            } else {
-                console.error("Erreur serveur:", error);
-            }
         });
     } catch (error) {
         console.error("Erreur lors de l'initialisation:", error);
