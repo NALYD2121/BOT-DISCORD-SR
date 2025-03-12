@@ -34,21 +34,14 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
-// Configuration CORS complète
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'HEAD', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-    credentials: true,
-    maxAge: 86400
-}));
-
-// Middleware pour les en-têtes CORS personnalisés
+// Configuration CORS très permissive
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', '*');
     res.header('Access-Control-Allow-Credentials', 'true');
+    
+    // Répondre immédiatement aux requêtes OPTIONS
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
@@ -266,86 +259,77 @@ app.post("/api/publish", upload.array("media", 5), async (req, res) => {
 app.get("/api/mods/:category", async (req, res) => {
     try {
         const { category } = req.params;
+        console.log("=== DÉBUT DE LA REQUÊTE /api/mods/:category ===");
         console.log("Catégorie demandée:", category);
+        console.log("Bot prêt:", isBotReady);
+        console.log("Serveur prêt:", isServerReady);
 
         if (!CHANNEL_IDS[category]) {
+            console.log("Catégorie invalide:", category);
             return res.status(400).json({
                 success: false,
-                error: `Catégorie invalide: ${category}`,
+                error: `Catégorie invalide: ${category}`
             });
         }
 
         const categoryChannels = CHANNEL_IDS[category];
         const channelsToFetch = Object.values(categoryChannels);
+        console.log("Canaux à récupérer:", channelsToFetch);
         const mods = [];
 
         for (const channelId of channelsToFetch) {
             try {
+                console.log("Tentative de récupération du canal:", channelId);
                 const channel = await client.channels.fetch(channelId);
-                if (!channel) continue;
+                
+                if (!channel) {
+                    console.log("Canal non trouvé:", channelId);
+                    continue;
+                }
 
+                console.log("Canal trouvé:", channel.name);
                 const messages = await channel.messages.fetch({ limit: 100 });
+                console.log("Nombre de messages trouvés:", messages.size);
 
                 messages.forEach((message) => {
                     if (message.embeds && message.embeds.length > 0) {
                         const embed = message.embeds[0];
-
-                        // Extraction du type depuis les champs
-                        const typeField = embed.fields.find(
-                            (f) => f.name === "🎯 Type de mod",
-                        );
-                        let type = typeField
-                            ? typeField.value.trim()
-                            : category;
-
-                        // Utiliser le type comme nom si le nom n'est pas spécifié
-                        let name = type || "Sans nom";
-
-                        // Extraction de la description
-                        const descField = embed.fields.find(
-                            (f) => f.name === "┌─ Description ─┐",
-                        );
-                        let description = "";
-                        if (descField && descField.value) {
-                            description =
-                                descField.value.split("▸")[1]?.trim() ||
-                                "Aucune description fournie";
-                        }
-
-                        console.log("Informations extraites :", {
-                            name,
-                            type,
-                            description,
-                            image: embed.image?.url,
-                            downloadLink:
-                                message.components?.[0]?.components?.[0]?.url,
-                        });
-
-                        // Création de l'objet mod
                         const modInfo = {
-                            name: name,
-                            type: type || category,
-                            description: description,
+                            name: embed.title || "Sans nom",
+                            type: category,
+                            description: embed.description || "Aucune description",
                             image: embed.image?.url || null,
-                            downloadLink:
-                                message.components?.[0]?.components?.[0]?.url ||
-                                "#",
-                            channelId: channelId,
+                            downloadLink: message.components?.[0]?.components?.[0]?.url || "#",
+                            channelId: channelId
                         };
-
+                        console.log("Mod trouvé:", modInfo.name);
                         mods.push(modInfo);
                     }
                 });
             } catch (error) {
-                console.error(`Erreur pour le channel ${channelId}:`, error);
+                console.error(`Erreur pour le canal ${channelId}:`, error);
             }
         }
 
         console.log("Nombre total de mods trouvés:", mods.length);
-        res.json({ success: true, mods });
+        console.log("=== FIN DE LA REQUÊTE ===");
+        
+        return res.json({
+            success: true,
+            mods,
+            metadata: {
+                category,
+                total: mods.length,
+                timestamp: new Date().toISOString()
+            }
+        });
     } catch (error) {
         console.error("Erreur générale:", error);
-        res.status(500).json({ success: false, error: "Erreur serveur" });
+        return res.status(500).json({
+            success: false,
+            error: "Erreur serveur",
+            details: error.message
+        });
     }
 });
 
