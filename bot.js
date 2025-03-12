@@ -319,26 +319,8 @@ client.once("ready", async () => {
 
         // Démarrage du serveur Express une fois le bot connecté
         const PORT = process.env.PORT || 3000;
-        const server = app.listen(PORT, "0.0.0.0", () => {
-            console.log(
-                `Serveur web démarré pour maintenir le bot en ligne sur le port ${PORT}`,
-            );
-        });
-
-        // Gestion des erreurs du serveur
-        server.on("error", (error) => {
-            if (error.code === "EADDRINUSE") {
-                console.error(
-                    `Le port ${PORT} est déjà utilisé. Tentative avec un autre port...`,
-                );
-                // Attendre 1 seconde et réessayer avec le port suivant
-                setTimeout(() => {
-                    server.close();
-                    server.listen(PORT + 1, "0.0.0.0");
-                }, 1000);
-            } else {
-                console.error("Erreur du serveur:", error);
-            }
+        app.listen(PORT, "0.0.0.0", () => {
+            console.log(`Serveur web démarré sur le port ${PORT}`);
         });
     } catch (error) {
         console.error("Erreur lors de l'initialisation:", error);
@@ -594,17 +576,6 @@ app.get("/api/mods/:id", async (req, res) => {
         res.status(500).json({ error: "Erreur serveur" });
     }
 });
-
-// Fonction pour garder le bot éveillé
-function keepAlive() {
-    const PORT = process.env.PORT || 3000;
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`Serveur prêt sur le port ${PORT}`);
-    });
-}
-
-// Appel de la fonction keepAlive avant la connexion du bot
-keepAlive();
 
 // Connexion du bot Discord
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
