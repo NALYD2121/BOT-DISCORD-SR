@@ -34,23 +34,26 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
-// Configuration CORS avec options plus permissives
-app.use(cors({
-    origin: ['https://nalyd2121.github.io', 'https://shop-replace.vercel.app', 'http://localhost:3000', 'http://localhost:5000'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-    credentials: false
-}));
+// Configuration CORS simplifiée
+app.use(cors());
 
-// Middleware pour les headers CORS
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', 'https://nalyd2121.github.io');
-    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
+// Middleware pour parser le JSON
+app.use(express.json());
+
+// Route de test simple
+app.get('/test', (req, res) => {
+    res.json({ status: 'ok', message: 'Le serveur fonctionne !' });
+});
+
+// Route racine avec plus d'informations
+app.get("/", (req, res) => {
+    res.json({
+        status: "online",
+        message: "Bot en ligne !",
+        timestamp: new Date().toISOString(),
+        routes: ["/api/mods/ARME", "/api/mods/VEHICULE", "/api/mods/PERSONNAGE"],
+        version: "1.0.0"
+    });
 });
 
 // Configuration de Multer
@@ -119,30 +122,6 @@ async function sendBumpReminder(channelId) {
         console.error("Erreur lors de l'envoi du rappel:", error);
     }
 }
-
-// Middleware pour parser le JSON
-app.use(express.json());
-
-// Route racine avec plus d'informations
-app.get("/", (req, res) => {
-    res.json({
-        status: "online",
-        message: "Bot en ligne !",
-        timestamp: new Date().toISOString(),
-        routes: [
-            "/api/mods/ARME",
-            "/api/mods/VEHICULE",
-            "/api/mods/PERSONNAGE"
-        ],
-        version: "1.0.0"
-    });
-});
-
-// Route pour Uptime Robot
-app.get("/ping", (req, res) => {
-    res.send('Je suis vivant !');
-    console.log('Ping reçu pour maintenir le bot en ligne');
-});
 
 // Route pour publier un mod
 app.post("/api/publish", upload.array("media", 5), async (req, res) => {
@@ -339,15 +318,43 @@ client.once("ready", async () => {
     }
 });
 
-// Démarrage du serveur Express AVANT la connexion du bot
+// Démarrage du serveur Express
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`Serveur web démarré sur le port ${PORT}`);
-    console.log(`URL de l'API: http://0.0.0.0:${PORT}`);
     
-    // Connexion du bot Discord APRÈS le démarrage du serveur
-    client.login(process.env.DISCORD_TOKEN).catch((error) => {
-        console.error("Erreur de connexion au bot Discord:", error);
+    // Une fois le serveur démarré, on connecte le bot Discord
+    startBot();
+});
+
+// Fonction pour démarrer le bot Discord
+async function startBot() {
+    try {
+        await client.login(process.env.DISCORD_TOKEN);
+        console.log('Bot Discord connecté avec succès');
+        
+        // Enregistrement des commandes slash une fois le bot connecté
+        await client.application.commands.set(commands);
+        console.log("Commandes slash enregistrées avec succès");
+    } catch (error) {
+        console.error('Erreur lors du démarrage du bot:', error);
+        // Redémarrage du bot après 5 secondes en cas d'erreur
+        setTimeout(startBot, 5000);
+    }
+}
+
+// Gestion des erreurs du serveur
+server.on('error', (error) => {
+    console.error('Erreur du serveur:', error);
+});
+
+// Gestion de la fermeture propre
+process.on('SIGTERM', () => {
+    console.log('SIGTERM reçu. Fermeture propre...');
+    server.close(() => {
+        console.log('Serveur HTTP fermé');
+        client.destroy();
+        process.exit(0);
     });
 });
 
@@ -361,9 +368,61 @@ app.use((err, req, res, next) => {
     });
 });
 
-// Route de test simple
-app.get('/test', (req, res) => {
-    res.json({ status: 'ok', message: 'Le serveur fonctionne !' });
+// Route pour obtenir un mod spécifique
+app.get("/api/mods/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        let mod = null;
+
+        // Parcourir tous les channels pour trouver le mod
+        for (const category of Object.keys(CHANNEL_IDS)) {
+            for (const [type, channelId] of Object.entries(
+                CHANNEL_IDS[category],
+            )) {
+                try {
+                    const channel = await client.channels.fetch(channelId);
+                    const message = await channel.messages.fetch(id);
+
+                    if (message) {
+                        const embed = message.embeds[0];
+                        mod = {
+                            id: message.id,
+                            category: category,
+                            type: type,
+                            name: embed.title,
+                            description: embed.description,
+                            images: embed.image ? [embed.image.url] : [],
+                            date: message.createdTimestamp,
+                            mediaFireLink:
+                                embed.fields.find((f) => f.name === "Download")
+                                    ?.value || "",
+                            discordLink: message.url,
+                        };
+                        break;
+                    }
+                } catch (e) {
+                    continue;
+                }
+            }
+            if (mod) break;
+        }
+
+        if (!mod) {
+            res.status(404).json({ error: "Mod non trouvé" });
+            return;
+        }
+
+        res.json(mod);
+    } catch (error) {
+        console.error("Erreur lors de la récupération du mod:", error);
+        res.status(500).json({ error: "Erreur serveur" });
+    }
+});
+
+// Ajout d'un middleware de logging
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
 });
 
 // Gestion des commandes slash
@@ -564,60 +623,3 @@ function extractModInfo(message) {
         return null;
     }
 }
-
-// Route pour obtenir un mod spécifique
-app.get("/api/mods/:id", async (req, res) => {
-    try {
-        const { id } = req.params;
-        let mod = null;
-
-        // Parcourir tous les channels pour trouver le mod
-        for (const category of Object.keys(CHANNEL_IDS)) {
-            for (const [type, channelId] of Object.entries(
-                CHANNEL_IDS[category],
-            )) {
-                try {
-                    const channel = await client.channels.fetch(channelId);
-                    const message = await channel.messages.fetch(id);
-
-                    if (message) {
-                        const embed = message.embeds[0];
-                        mod = {
-                            id: message.id,
-                            category: category,
-                            type: type,
-                            name: embed.title,
-                            description: embed.description,
-                            images: embed.image ? [embed.image.url] : [],
-                            date: message.createdTimestamp,
-                            mediaFireLink:
-                                embed.fields.find((f) => f.name === "Download")
-                                    ?.value || "",
-                            discordLink: message.url,
-                        };
-                        break;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-            if (mod) break;
-        }
-
-        if (!mod) {
-            res.status(404).json({ error: "Mod non trouvé" });
-            return;
-        }
-
-        res.json(mod);
-    } catch (error) {
-        console.error("Erreur lors de la récupération du mod:", error);
-        res.status(500).json({ error: "Erreur serveur" });
-    }
-});
-
-// Ajout d'un middleware de logging
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
-});
