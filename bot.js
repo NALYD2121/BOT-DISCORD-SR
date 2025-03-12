@@ -44,11 +44,22 @@ const MAX_RESTART_ATTEMPTS = 5;
 const RESTART_DELAY = 5000; // 5 secondes
 
 // Configuration CORS très permissive
-app.use(cors({
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: '*'
-}));
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    res.header('Access-Control-Max-Age', '86400'); // 24 heures
+    
+    // Log de la requête
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    console.log('Headers:', req.headers);
+    
+    // Répondre immédiatement aux requêtes OPTIONS
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
 
 // Middleware pour parser le JSON
 app.use(express.json());
@@ -257,10 +268,11 @@ app.post("/api/publish", upload.array("media", 5), async (req, res) => {
 app.get("/api/mods/:category", async (req, res) => {
     try {
         const { category } = req.params;
-        console.log("=== DÉBUT DE LA REQUÊTE /api/mods/:category ===");
+        console.log("\n=== DÉBUT DE LA REQUÊTE /api/mods/:category ===");
         console.log("Catégorie demandée:", category);
         console.log("Bot prêt:", isBotReady);
         console.log("Serveur prêt:", isServerReady);
+        console.log("Headers de la requête:", req.headers);
 
         if (!CHANNEL_IDS[category]) {
             console.log("Catégorie invalide:", category);
@@ -277,7 +289,7 @@ app.get("/api/mods/:category", async (req, res) => {
 
         for (const channelId of channelsToFetch) {
             try {
-                console.log("Tentative de récupération du canal:", channelId);
+                console.log("\nTentative de récupération du canal:", channelId);
                 const channel = await client.channels.fetch(channelId);
                 
                 if (!channel) {
@@ -309,8 +321,8 @@ app.get("/api/mods/:category", async (req, res) => {
             }
         }
 
-        console.log("Nombre total de mods trouvés:", mods.length);
-        console.log("=== FIN DE LA REQUÊTE ===");
+        console.log("\nNombre total de mods trouvés:", mods.length);
+        console.log("=== FIN DE LA REQUÊTE ===\n");
         
         return res.json({
             success: true,
@@ -322,7 +334,7 @@ app.get("/api/mods/:category", async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Erreur générale:", error);
+        console.error("\nErreur générale:", error);
         return res.status(500).json({
             success: false,
             error: "Erreur serveur",
@@ -493,12 +505,6 @@ app.get("/api/mods/:id", async (req, res) => {
         console.error("Erreur lors de la récupération du mod:", error);
         res.status(500).json({ error: "Erreur serveur" });
     }
-});
-
-// Ajout d'un middleware de logging
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
-    next();
 });
 
 // Gestion des commandes slash
