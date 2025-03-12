@@ -36,21 +36,20 @@ const app = express();
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
-    origin: ['https://shop-replace.vercel.app', 'http://localhost:3000', 'http://localhost:5000', 'file://', '*'],
-    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
+    origin: ['https://nalyd2121.github.io', 'https://shop-replace.vercel.app', 'http://localhost:3000', 'http://localhost:5000'],
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-    exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    credentials: true,
-    maxAge: 86400,
-    preflightContinue: false,
-    optionsSuccessStatus: 200
+    credentials: false
 }));
 
-// Ajout de headers supplémentaires
+// Middleware pour les headers CORS
 app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
-    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    res.header('Access-Control-Allow-Origin', 'https://nalyd2121.github.io');
+    res.header('Access-Control-Allow-Methods', 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
     next();
 });
 
@@ -335,16 +334,36 @@ client.once("ready", async () => {
         // Enregistrement des commandes slash
         await client.application.commands.set(commands);
         console.log("Commandes slash enregistrées avec succès");
-
-        // Démarrage du serveur Express une fois le bot connecté
-        const PORT = process.env.PORT || 3000;
-        app.listen(PORT, '0.0.0.0', () => {
-            console.log(`Serveur web démarré sur le port ${PORT}`);
-            console.log(`URL de l'API: http://0.0.0.0:${PORT}/api`);
-        });
     } catch (error) {
-        console.error("Erreur lors de l'initialisation:", error);
+        console.error("Erreur lors de l'initialisation des commandes:", error);
     }
+});
+
+// Démarrage du serveur Express AVANT la connexion du bot
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Serveur web démarré sur le port ${PORT}`);
+    console.log(`URL de l'API: http://0.0.0.0:${PORT}`);
+    
+    // Connexion du bot Discord APRÈS le démarrage du serveur
+    client.login(process.env.DISCORD_TOKEN).catch((error) => {
+        console.error("Erreur de connexion au bot Discord:", error);
+    });
+});
+
+// Middleware pour gérer les erreurs
+app.use((err, req, res, next) => {
+    console.error('Erreur middleware:', err);
+    res.status(500).json({
+        success: false,
+        error: "Erreur serveur",
+        message: err.message
+    });
+});
+
+// Route de test simple
+app.get('/test', (req, res) => {
+    res.json({ status: 'ok', message: 'Le serveur fonctionne !' });
 });
 
 // Gestion des commandes slash
@@ -595,11 +614,6 @@ app.get("/api/mods/:id", async (req, res) => {
         console.error("Erreur lors de la récupération du mod:", error);
         res.status(500).json({ error: "Erreur serveur" });
     }
-});
-
-// Connexion du bot Discord
-client.login(process.env.DISCORD_TOKEN).catch((error) => {
-    console.error("Erreur de connexion au bot Discord:", error);
 });
 
 // Ajout d'un middleware de logging
