@@ -390,13 +390,44 @@ server.on('error', (error) => {
 });
 
 // Gestion de la fermeture propre
-process.on('SIGTERM', () => {
-    console.log('SIGTERM reçu. Fermeture propre...');
-    server.close(() => {
-        console.log('Serveur HTTP fermé');
-        client.destroy();
+process.on('SIGTERM', async () => {
+    console.log('=== DÉBUT DE LA FERMETURE PROPRE ===');
+    console.log('Signal SIGTERM reçu');
+    
+    try {
+        // Arrêt du serveur HTTP
+        console.log('Fermeture du serveur HTTP...');
+        await new Promise((resolve) => {
+            server.close(() => {
+                console.log('Serveur HTTP fermé avec succès');
+                resolve();
+            });
+        });
+
+        // Déconnexion du bot Discord
+        console.log('Déconnexion du bot Discord...');
+        if (client) {
+            await client.destroy();
+            console.log('Bot Discord déconnecté avec succès');
+        }
+
+        console.log('=== FERMETURE PROPRE TERMINÉE ===');
         process.exit(0);
-    });
+    } catch (error) {
+        console.error('Erreur lors de la fermeture:', error);
+        process.exit(1);
+    }
+});
+
+// Ajout d'autres gestionnaires de signaux
+process.on('SIGINT', () => {
+    console.log('Signal SIGINT reçu');
+    process.emit('SIGTERM');
+});
+
+process.on('uncaughtException', (error) => {
+    console.error('Erreur non capturée:', error);
+    process.emit('SIGTERM');
 });
 
 // Middleware pour gérer les erreurs
