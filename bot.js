@@ -36,15 +36,23 @@ const app = express();
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
-    origin: true, // Autorise toutes les origines
+    origin: ['https://shop-replace.vercel.app', 'http://localhost:3000', 'http://localhost:5000', 'file://', '*'],
     methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
     exposedHeaders: ['Content-Range', 'X-Content-Range'],
-    credentials: false, // Désactive credentials car on n'en a pas besoin
-    maxAge: 86400, // Cache les résultats de preflight pendant 24 heures
+    credentials: true,
+    maxAge: 86400,
     preflightContinue: false,
     optionsSuccessStatus: 200
 }));
+
+// Ajout de headers supplémentaires
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+    next();
+});
 
 // Configuration de Multer
 const upload = multer({
@@ -116,16 +124,18 @@ async function sendBumpReminder(channelId) {
 // Middleware pour parser le JSON
 app.use(express.json());
 
-// Route racine
+// Route racine avec plus d'informations
 app.get("/", (req, res) => {
     res.json({
         status: "online",
         message: "Bot en ligne !",
+        timestamp: new Date().toISOString(),
         routes: [
             "/api/mods/ARME",
             "/api/mods/VEHICULE",
             "/api/mods/PERSONNAGE"
-        ]
+        ],
+        version: "1.0.0"
     });
 });
 
@@ -328,8 +338,9 @@ client.once("ready", async () => {
 
         // Démarrage du serveur Express une fois le bot connecté
         const PORT = process.env.PORT || 3000;
-        app.listen(PORT, () => {
+        app.listen(PORT, '0.0.0.0', () => {
             console.log(`Serveur web démarré sur le port ${PORT}`);
+            console.log(`URL de l'API: http://0.0.0.0:${PORT}/api`);
         });
     } catch (error) {
         console.error("Erreur lors de l'initialisation:", error);
@@ -589,4 +600,10 @@ app.get("/api/mods/:id", async (req, res) => {
 // Connexion du bot Discord
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error("Erreur de connexion au bot Discord:", error);
+});
+
+// Ajout d'un middleware de logging
+app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
 });
