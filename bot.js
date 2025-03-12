@@ -37,11 +37,11 @@ const app = express();
 // Configuration CORS avec options plus permissives
 app.use(
     cors({
-        origin: "*",
-        methods: ["GET", "POST", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"],
+        origin: ['https://shop-replace.vercel.app', 'http://localhost:3000', 'https://cb4dfe0d-220b-4edd-a87c-bd30661b7aaf-00-23bu0eqpn1h3a.picard.replit.dev'],
+        methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
+        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
         credentials: true,
-        optionsSuccessStatus: 200,
+        optionsSuccessStatus: 200
     }),
 );
 
