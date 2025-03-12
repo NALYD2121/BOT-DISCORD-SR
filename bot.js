@@ -35,18 +35,37 @@ process.on("unhandledRejection", (error) => {
 const app = express();
 
 // Configuration CORS simplifiée
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: '*'
+}));
 
 // Middleware pour parser le JSON
 app.use(express.json());
 
+// Variables globales pour le statut
+let isServerReady = false;
+let isBotReady = false;
+
 // Route de test simple
 app.get('/test', (req, res) => {
-    res.json({ status: 'ok', message: 'Le serveur fonctionne !' });
+    res.json({ 
+        status: 'ok',
+        server: isServerReady ? 'ready' : 'starting',
+        bot: isBotReady ? 'connected' : 'connecting',
+        uptime: process.uptime()
+    });
 });
 
 // Route racine avec plus d'informations
 app.get("/", (req, res) => {
+    if (!isBotReady) {
+        return res.status(503).json({
+            status: "initializing",
+            message: "Le bot est en cours de démarrage, veuillez réessayer dans quelques secondes"
+        });
+    }
     res.json({
         status: "online",
         message: "Bot en ligne !",
@@ -54,6 +73,17 @@ app.get("/", (req, res) => {
         routes: ["/api/mods/ARME", "/api/mods/VEHICULE", "/api/mods/PERSONNAGE"],
         version: "1.0.0"
     });
+});
+
+// Middleware pour vérifier si le bot est prêt
+app.use('/api', (req, res, next) => {
+    if (!isBotReady) {
+        return res.status(503).json({
+            error: "Service indisponible",
+            message: "Le bot est en cours de démarrage, veuillez réessayer dans quelques secondes"
+        });
+    }
+    next();
 });
 
 // Configuration de Multer
@@ -318,30 +348,43 @@ client.once("ready", async () => {
     }
 });
 
-// Démarrage du serveur Express
-const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Serveur web démarré sur le port ${PORT}`);
-    
-    // Une fois le serveur démarré, on connecte le bot Discord
-    startBot();
-});
-
-// Fonction pour démarrer le bot Discord
-async function startBot() {
+// Fonction pour démarrer le bot Discord avec retry
+async function startBot(retryCount = 0) {
     try {
+        console.log(`Tentative de connexion du bot Discord (essai ${retryCount + 1})`);
         await client.login(process.env.DISCORD_TOKEN);
         console.log('Bot Discord connecté avec succès');
+        isBotReady = true;
         
         // Enregistrement des commandes slash une fois le bot connecté
         await client.application.commands.set(commands);
         console.log("Commandes slash enregistrées avec succès");
     } catch (error) {
         console.error('Erreur lors du démarrage du bot:', error);
-        // Redémarrage du bot après 5 secondes en cas d'erreur
-        setTimeout(startBot, 5000);
+        if (retryCount < 5) {
+            console.log(`Nouvelle tentative dans 5 secondes...`);
+            setTimeout(() => startBot(retryCount + 1), 5000);
+        } else {
+            console.error('Échec de la connexion du bot après 5 tentatives');
+            process.exit(1);
+        }
     }
 }
+
+// Démarrage du serveur Express
+const PORT = process.env.PORT || 3000;
+const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Serveur web démarré sur le port ${PORT}`);
+    isServerReady = true;
+    startBot();
+});
+
+// Gestion des déconnexions du bot
+client.on('disconnect', () => {
+    console.log('Bot déconnecté, tentative de reconnexion...');
+    isBotReady = false;
+    startBot();
+});
 
 // Gestion des erreurs du serveur
 server.on('error', (error) => {
