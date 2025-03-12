@@ -33,23 +33,7 @@ process.on("unhandledRejection", (error) => {
 
 // Configuration du serveur Express
 const app = express();
-
-// Configuration CORS très permissive
-app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', '*');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    
-    // Répondre immédiatement aux requêtes OPTIONS
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
-
-// Middleware pour parser le JSON
-app.use(express.json());
+const PORT = process.env.PORT || 3000;
 
 // Variables globales pour le statut et la stabilité
 let isServerReady = false;
@@ -58,6 +42,16 @@ let isShuttingDown = false;
 let restartAttempts = 0;
 const MAX_RESTART_ATTEMPTS = 5;
 const RESTART_DELAY = 5000; // 5 secondes
+
+// Configuration CORS très permissive
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: '*'
+}));
+
+// Middleware pour parser le JSON
+app.use(express.json());
 
 // Route de test simple
 app.get('/test', (req, res) => {
@@ -363,10 +357,24 @@ async function startServer() {
     
     try {
         console.log('Démarrage du serveur web...');
-        const server = app.listen(PORT, '0.0.0.0', () => {
+        const server = app.listen(PORT, () => {
             console.log(`Serveur web démarré sur le port ${PORT}`);
             isServerReady = true;
-            startBot();
+            
+            // Connexion du bot une fois le serveur démarré
+            client.login(process.env.DISCORD_TOKEN)
+                .then(() => {
+                    console.log('Bot Discord connecté avec succès');
+                    isBotReady = true;
+                    return client.application.commands.set(commands);
+                })
+                .then(() => {
+                    console.log("Commandes slash enregistrées avec succès");
+                })
+                .catch(error => {
+                    console.error('Erreur lors du démarrage du bot:', error);
+                    process.exit(1);
+                });
         });
 
         // Gestion des erreurs du serveur
@@ -400,75 +408,17 @@ async function handleServerError() {
     startServer();
 }
 
-// Fonction pour démarrer le bot Discord avec retry
-async function startBot(retryCount = 0) {
-    if (isShuttingDown) return;
-    
-    try {
-        console.log(`Tentative de connexion du bot Discord (essai ${retryCount + 1})`);
-        await client.login(process.env.DISCORD_TOKEN);
-        console.log('Bot Discord connecté avec succès');
-        isBotReady = true;
-        resetRestartAttempts();
-        
-        // Enregistrement des commandes slash une fois le bot connecté
-        await client.application.commands.set(commands);
-        console.log("Commandes slash enregistrées avec succès");
-    } catch (error) {
-        console.error('Erreur lors du démarrage du bot:', error);
-        if (retryCount < MAX_RESTART_ATTEMPTS && !isShuttingDown) {
-            console.log(`Nouvelle tentative dans ${RESTART_DELAY/1000} secondes...`);
-            setTimeout(() => startBot(retryCount + 1), RESTART_DELAY);
-        } else {
-            console.error('Échec de la connexion du bot après plusieurs tentatives');
-            process.exit(1);
-        }
-    }
-}
-
-// Démarrage initial du serveur
-const server = startServer();
-
-// Gestion des déconnexions du bot
-client.on('disconnect', () => {
-    console.log('Bot déconnecté, tentative de reconnexion...');
-    isBotReady = false;
-    startBot();
-});
-
 // Gestion de la fermeture propre
-process.on('SIGTERM', async () => {
-    if (isShuttingDown) return;
-    isShuttingDown = true;
-    
-    console.log('=== DÉBUT DE LA FERMETURE PROPRE ===');
-    console.log('Signal SIGTERM reçu');
-    
-    try {
-        // Déconnexion du bot Discord
-        console.log('Déconnexion du bot Discord...');
+process.on('SIGTERM', () => {
+    console.log('Signal SIGTERM reçu, fermeture propre...');
+    server.close(() => {
+        console.log('Serveur HTTP fermé');
         if (client) {
-            await client.destroy();
-            console.log('Bot Discord déconnecté avec succès');
+            client.destroy();
+            console.log('Bot Discord déconnecté');
         }
-
-        // Arrêt du serveur HTTP
-        if (server) {
-            console.log('Fermeture du serveur HTTP...');
-            await new Promise((resolve) => {
-                server.close(() => {
-                    console.log('Serveur HTTP fermé avec succès');
-                    resolve();
-                });
-            });
-        }
-
-        console.log('=== FERMETURE PROPRE TERMINÉE ===');
         process.exit(0);
-    } catch (error) {
-        console.error('Erreur lors de la fermeture:', error);
-        process.exit(1);
-    }
+    });
 });
 
 // Gestion des autres signaux
