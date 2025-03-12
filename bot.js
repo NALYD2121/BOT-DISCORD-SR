@@ -33,7 +33,7 @@ process.on("unhandledRejection", (error) => {
 
 // Configuration du serveur Express
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || process.env.RAILWAY_PORT || 3000;
 
 // Variables globales pour le statut et la stabilité
 let isServerReady = false;
@@ -357,7 +357,7 @@ async function startServer() {
     
     try {
         console.log('Démarrage du serveur web...');
-        const server = app.listen(PORT, () => {
+        const server = app.listen(PORT, '0.0.0.0', () => {
             console.log(`Serveur web démarré sur le port ${PORT}`);
             isServerReady = true;
             
