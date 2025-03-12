@@ -36,10 +36,13 @@ const app = express();
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
-    origin: '*',
+    origin: true, // Autorise toutes les origines
     methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-    credentials: true,
+    exposedHeaders: ['Content-Range', 'X-Content-Range'],
+    credentials: false, // Désactive credentials car on n'en a pas besoin
+    maxAge: 86400, // Cache les résultats de preflight pendant 24 heures
+    preflightContinue: false,
     optionsSuccessStatus: 200
 }));
 
