@@ -35,15 +35,13 @@ process.on("unhandledRejection", (error) => {
 const app = express();
 
 // Configuration CORS avec options plus permissives
-app.use(
-    cors({
-        origin: ['https://shop-replace.vercel.app', 'http://localhost:3000', 'https://cb4dfe0d-220b-4edd-a87c-bd30661b7aaf-00-23bu0eqpn1h3a.picard.replit.dev'],
-        methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
-        allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
-        credentials: true,
-        optionsSuccessStatus: 200
-    }),
-);
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+    credentials: true,
+    optionsSuccessStatus: 200
+}));
 
 // Configuration de Multer
 const upload = multer({
