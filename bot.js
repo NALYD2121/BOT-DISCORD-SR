@@ -34,16 +34,20 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
+const allowedOrigins = ['https://votre-site1.github.io', 'https://votre-site2.github.io'];
+
 // Configuration CORS avec options plus permissives
-app.use(
-    cors({
-        origin: "*",
-        methods: ["GET", "POST", "OPTIONS"],
-        allowedHeaders: ["Content-Type", "Authorization"],
-        credentials: true,
-        optionsSuccessStatus: 200,
-    }),
-);
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Configuration de Multer
 const upload = multer({
