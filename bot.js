@@ -34,7 +34,7 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
-const allowedOrigins = ['https://votre-site1.github.io', 'https://votre-site2.github.io'];
+const allowedOrigins = ['https://votre-site.github.io', null];
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
