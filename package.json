@@ -1,7 +1,7 @@
 {
-  "name": "shop-replace-bot",
+  "name": "shop-replaces-bot",
   "version": "1.0.0",
-  "description": "Bot Discord pour Shop Replace",
+  "description": "Bot Discord pour Shop Replaces",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
