@@ -423,19 +423,9 @@ const GUILD_ID = '1084589741913153607'; // ID de ton serveur Discord
 // Route pour créer un ticket support
 app.post('/api/ticket', async (req, res) => {
     try {
-        const { sujet, description, captchaToken, access_token } = req.body;
-        if (!access_token || !captchaToken || !sujet || !description) {
+        const { sujet, description, access_token } = req.body;
+        if (!access_token || !sujet || !description) {
             return res.status(400).json({ success: false, error: 'Champs manquants' });
-        }
-        // Vérification du captcha Google reCAPTCHA
-        const captchaRes = await axios.post('https://www.google.com/recaptcha/api/siteverify', null, {
-            params: {
-                secret: RECAPTCHA_SECRET,
-                response: captchaToken
-            }
-        });
-        if (!captchaRes.data.success || captchaRes.data.score < 0.5) {
-            return res.status(400).json({ success: false, error: 'Captcha invalide' });
         }
         // Vérification du token Discord (OAuth2)
         let user, userId;
