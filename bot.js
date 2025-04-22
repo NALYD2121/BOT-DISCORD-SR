@@ -904,23 +904,6 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-// Relais des messages du staff vers l'utilisateur en MP
-client.on('messageCreate', async (message) => {
-    // Uniquement dans un channel ticket support
-    if (message.guild && message.channel.parentId === '1364246550561165413' && !message.author.bot) {
-        let tickets = readTickets();
-        const ticket = tickets.find(t => t.id === message.channel.id && t.status === 'ouvert');
-        if (ticket) {
-            try {
-                const user = await client.users.fetch(ticket.userId);
-                await user.send(`**[Support]** ${message.author.tag} : ${message.content}`);
-            } catch (e) {
-                message.channel.send('Impossible d’envoyer le message à l’utilisateur (DM fermés ?).');
-            }
-        }
-    }
-});
-
 function cleanText(text) {
     if (!text) return "";
     return text
