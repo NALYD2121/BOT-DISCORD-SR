@@ -105,6 +105,7 @@ const CHANNEL_IDS = {
 // ID du canal et du rôle
 const RULES_CHANNEL_ID = "1085617640631971931";
 const MEMBER_ROLE_ID = "1085540034117111889";
+const STAFF_ROLE_ID = 'ID_ROLE_STAFF'; // Remplace par l'ID de ton rôle staff/modo/admin
 
 // Création des commandes slash
 const commands = [
@@ -430,7 +431,7 @@ app.post('/api/ticket', async (req, res) => {
             parent: categoryId,
             permissionOverwrites: [
                 { id: guild.roles.everyone, deny: ['ViewChannel'] },
-                { id: discordUserId, allow: ['ViewChannel', 'SendMessages'] },
+                { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
                 { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
@@ -705,7 +706,7 @@ client.on('messageCreate', async (message) => {
     const guild = client.guilds.cache.first();
     const categoryId = '1364246550561165413';
 
-    // Si pas de ticket, créer un nouveau channel support
+    // Si pas de ticket ouvert, créer un nouveau channel support
     if (!ticket) {
         const channelName = `ticket-${message.author.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
         const channel = await guild.channels.create({
@@ -714,6 +715,7 @@ client.on('messageCreate', async (message) => {
             parent: categoryId,
             permissionOverwrites: [
                 { id: guild.roles.everyone, deny: ['ViewChannel'] },
+                { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
                 { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
@@ -741,6 +743,40 @@ client.on('messageCreate', async (message) => {
         writeTickets(tickets);
         // Confirmer à l'utilisateur
         await message.author.send('Ton ticket a bien été créé ! Le support va te répondre ici, en message privé. Tu n’as pas besoin d’aller sur le serveur ou dans un salon, reste simplement sur cette conversation Discord.');
+    } else if (ticket.status === 'ferme') {
+        // Si le dernier ticket est fermé, créer un nouveau ticket
+        const channelName = `ticket-${message.author.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
+        const channel = await guild.channels.create({
+            name: channelName,
+            type: 0, // GUILD_TEXT
+            parent: categoryId,
+            permissionOverwrites: [
+                { id: guild.roles.everyone, deny: ['ViewChannel'] },
+                { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
+                { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
+            ]
+        });
+        const closeRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('close_ticket')
+                .setLabel('Fermer le ticket')
+                .setStyle(ButtonStyle.Danger)
+        );
+        await channel.send({
+            content: `**[Utilisateur]** ${message.author.tag} : ${message.content}`,
+            components: [closeRow]
+        });
+        ticket = {
+            id: channel.id,
+            userId: message.author.id,
+            sujet: 'Ticket via MP',
+            description: message.content,
+            status: 'ouvert',
+            createdAt: Date.now()
+        };
+        tickets.push(ticket);
+        writeTickets(tickets);
+        await message.author.send('Ton nouveau ticket a bien été créé ! Le support va te répondre ici, en message privé.');
     } else {
         // Si ticket déjà ouvert, relayer le message dans le channel support
         const channel = guild.channels.cache.get(ticket.id);
