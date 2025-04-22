@@ -334,9 +334,10 @@ client.once("ready", async () => {
     console.log(`Bot connecté en tant que ${client.user.tag}`);
 
     try {
-        // Enregistrement des commandes slash
-        await client.application.commands.set(commands);
-        console.log("Commandes slash enregistrées avec succès");
+        // Enregistrement des commandes slash pour la guild (serveur) spécifique
+        const GUILD_ID = "1084589741913153607";
+        await client.application.commands.set(commands, GUILD_ID);
+        console.log("Commandes slash enregistrées pour la guild !");
 
         // Démarrage du serveur Express une fois le bot connecté
         const PORT = process.env.PORT || 8080;
