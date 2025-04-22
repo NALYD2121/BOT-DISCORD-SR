@@ -116,6 +116,13 @@ const commands = [
         .setDescription("Arrête les rappels de bump"),
 ];
 
+// Ajout de la commande /activer-reglement
+const activateRulesCommand = new SlashCommandBuilder()
+    .setName("activer-reglement")
+    .setDescription("Active le système de règlement pour les nouveaux membres");
+
+commands.push(activateRulesCommand);
+
 // Fonction pour envoyer un rappel de bump
 async function sendBumpReminder(channelId) {
     try {
@@ -385,7 +392,7 @@ client.on("guildMemberAdd", async (member) => {
     }
 });
 
-// Gestion des interactions avec les boutons
+// Gestion des interactions avec les boutons et commandes
 client.on("interactionCreate", async (interaction) => {
     if (!interaction.isCommand() && !interaction.isButton()) return;
 
@@ -427,6 +434,46 @@ client.on("interactionCreate", async (interaction) => {
                     await interaction.reply({
                         content:
                             "Aucun rappel de bump n'est actuellement configuré.",
+                        ephemeral: true,
+                    });
+                }
+                break;
+
+            case "activer-reglement":
+                try {
+                    const channel = interaction.guild.channels.cache.get(RULES_CHANNEL_ID);
+                    if (!channel) {
+                        await interaction.reply({
+                            content: "Le canal des règles est introuvable. Veuillez vérifier la configuration.",
+                            ephemeral: true,
+                        });
+                        return;
+                    }
+
+                    const embed = new EmbedBuilder()
+                        .setTitle("Bienvenue sur le serveur !")
+                        .setDescription(
+                            "Veuillez lire et accepter le règlement pour accéder au serveur. Cliquez sur le bouton ci-dessous pour accepter."
+                        )
+                        .setColor(0x00f7ff);
+
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId("accept_rules")
+                            .setLabel("Accepter le règlement")
+                            .setStyle(ButtonStyle.Success)
+                    );
+
+                    await channel.send({ embeds: [embed], components: [row] });
+
+                    await interaction.reply({
+                        content: "Le système de règlement a été activé avec succès !",
+                        ephemeral: true,
+                    });
+                } catch (error) {
+                    console.error("Erreur lors de l'activation du système de règlement:", error);
+                    await interaction.reply({
+                        content: "Une erreur est survenue lors de l'activation du système de règlement.",
                         ephemeral: true,
                     });
                 }
