@@ -48,7 +48,7 @@ app.use(cors({
             callback(new Error('Not allowed by CORS'));
         }
     },
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'OPTIONS', 'DELETE'], // Ajout de DELETE ici
     allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
