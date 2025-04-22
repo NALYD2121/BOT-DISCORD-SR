@@ -434,8 +434,17 @@ app.post('/api/ticket', async (req, res) => {
                 { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
-        // Message d'accueil dans le channel
-        await channel.send(`Nouveau ticket support ouvert par <@${discordUserId}>\n**Sujet :** ${sujet}\n**Description :** ${description}`);
+        // Message d'accueil dans le channel + bouton pour fermer le ticket
+        const closeRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('close_ticket')
+                .setLabel('Fermer le ticket')
+                .setStyle(ButtonStyle.Danger)
+        );
+        await channel.send({
+            content: `Ticket ouvert par ${user.tag} (ID: ${user.id})\n**Sujet :** ${sujet}\n**Description :** ${description}`,
+            components: [closeRow]
+        });
         // Envoi d'un MP à l'utilisateur
         await user.send(`Votre ticket a bien été créé ! Le support va te répondre ici, en message privé. Tu n’as pas besoin d’aller sur le serveur ou dans un salon, reste simplement sur cette conversation Discord.`);
         // Stockage du ticket
@@ -664,6 +673,23 @@ client.on("interactionCreate", async (interaction) => {
                     ephemeral: true,
                 });
             }
+        } else if (interaction.customId === 'close_ticket') {
+            // Vérifier que c'est bien dans un channel support
+            if (interaction.channel.parentId === '1364246550561165413') {
+                let tickets = readTickets();
+                const ticket = tickets.find(t => t.id === interaction.channel.id && t.status === 'ouvert');
+                if (ticket) {
+                    // Fermer le ticket (supprimer le channel, notifier l'utilisateur)
+                    try {
+                        const user = await client.users.fetch(ticket.userId);
+                        await user.send('Votre ticket a été fermé par le support. Merci de ne pas répondre à ce ticket fermé, sous peine de sanction (ban). Si besoin, ouvrez un nouveau ticket.');
+                    } catch (e) { /* ignore erreur DM */ }
+                    await interaction.channel.delete('Ticket fermé via bouton Discord');
+                    // Mettre à jour le ticket (status fermé)
+                    tickets = tickets.map(t => t.id === interaction.channel.id ? { ...t, status: 'ferme', closedAt: Date.now() } : t);
+                    writeTickets(tickets);
+                }
+            }
         }
     }
 });
@@ -691,8 +717,17 @@ client.on('messageCreate', async (message) => {
                 { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
-        // Message d'accueil dans le channel
-        await channel.send(`Ticket ouvert par ${message.author.tag} (ID: ${message.author.id})\n**Message initial :** ${message.content}`);
+        // Message d'accueil dans le channel + bouton pour fermer le ticket
+        const closeRow = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId('close_ticket')
+                .setLabel('Fermer le ticket')
+                .setStyle(ButtonStyle.Danger)
+        );
+        await channel.send({
+            content: `**[Utilisateur]** ${message.author.tag} : ${message.content}`,
+            components: [closeRow]
+        });
         // Stocker le ticket
         ticket = {
             id: channel.id,
