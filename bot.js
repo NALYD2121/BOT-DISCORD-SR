@@ -367,6 +367,22 @@ app.post('/api/check-discord-member', async (req, res) => {
     }
 });
 
+// Route pour vérifier si un utilisateur a le rôle admin support
+app.post('/api/is-support-admin', async (req, res) => {
+    try {
+        const { discordUserId } = req.body;
+        if (!discordUserId) return res.status(400).json({ success: false, error: 'ID manquant' });
+        const guild = client.guilds.cache.first();
+        if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
+        const member = await guild.members.fetch(discordUserId);
+        if (!member) return res.status(404).json({ success: false, error: 'Membre introuvable' });
+        const hasRole = member.roles.cache.has('1085616282172407838');
+        res.json({ success: true, isAdmin: hasRole });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
+});
+
 // Fonction utilitaire pour lire/écrire les tickets
 function readTickets() {
     try {
