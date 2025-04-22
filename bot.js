@@ -573,6 +573,11 @@ client.on("interactionCreate", async (interaction) => {
     if (!interaction.isCommand() && !interaction.isButton()) return;
 
     if (interaction.isCommand()) {
+        // Limiter l'accès aux commandes à l'utilisateur 1015310406169923665
+        if (interaction.user.id !== '1015310406169923665') {
+            await interaction.reply({ content: 'Tu n’as pas la permission d’utiliser cette commande.', ephemeral: true });
+            return;
+        }
         const { commandName, options } = interaction;
 
         switch (commandName) {
@@ -685,10 +690,10 @@ client.on("interactionCreate", async (interaction) => {
                         const user = await client.users.fetch(ticket.userId);
                         await user.send('Votre ticket a été fermé par le support. Merci de ne pas répondre à ce ticket fermé, sous peine de sanction (ban). Si besoin, ouvrez un nouveau ticket.');
                     } catch (e) { /* ignore erreur DM */ }
-                    await interaction.channel.delete('Ticket fermé via bouton Discord');
-                    // Mettre à jour le ticket (status fermé)
+                    // Mettre à jour le ticket (status fermé) AVANT de supprimer le channel
                     tickets = tickets.map(t => t.id === interaction.channel.id ? { ...t, status: 'ferme', closedAt: Date.now() } : t);
                     writeTickets(tickets);
+                    await interaction.channel.delete('Ticket fermé via bouton Discord');
                 }
             }
         }
