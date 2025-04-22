@@ -423,17 +423,15 @@ app.post('/api/ticket', async (req, res) => {
         if (!discordUserId || !sujet || !description) {
             return res.status(400).json({ success: false, error: 'Champs manquants' });
         }
-        // Créer le channel support dans la catégorie
         const categoryId = '1364246550561165413';
         const guild = client.guilds.cache.first();
         if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
         const user = await client.users.fetch(discordUserId);
         if (!user) return res.status(404).json({ success: false, error: 'Utilisateur Discord introuvable' });
-        // Nom du channel = ticket-<pseudo>-<timestamp>
         const channelName = `ticket-${user.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
         const channel = await guild.channels.create({
             name: channelName,
-            type: 0, // 0 = GUILD_TEXT
+            type: 0, // GUILD_TEXT
             parent: categoryId,
             permissionOverwrites: [
                 { id: guild.roles.everyone, deny: ['ViewChannel'] },
@@ -441,7 +439,6 @@ app.post('/api/ticket', async (req, res) => {
                 { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
-        // Message d'accueil dans le channel + bouton pour fermer le ticket
         const closeRow = new ActionRowBuilder().addComponents(
             new ButtonBuilder()
                 .setCustomId('close_ticket')
@@ -452,9 +449,6 @@ app.post('/api/ticket', async (req, res) => {
             content: `Ticket ouvert par ${user.tag} (ID: ${user.id})\n**Sujet :** ${sujet}\n**Description :** ${description}`,
             components: [closeRow]
         });
-        // Envoi d'un MP à l'utilisateur
-        await user.send(`Votre ticket a bien été créé ! Le support va te répondre ici, en message privé. Tu n’as pas besoin d’aller sur le serveur ou dans un salon, reste simplement sur cette conversation Discord.`);
-        // Stockage du ticket
         const tickets = readTickets();
         const ticket = {
             id: channel.id,
