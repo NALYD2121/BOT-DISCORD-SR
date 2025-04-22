@@ -302,7 +302,7 @@ app.get("/api/mods/:category", async (req, res) => {
                                 message.components?.[0]?.components?.[0]?.url,
                         });
 
-                        // Création de l'objet mod
+                        // Création de l'objet mod avec le lien direct Discord
                         const modInfo = {
                             name: name,
                             type: type || category,
@@ -312,6 +312,9 @@ app.get("/api/mods/:category", async (req, res) => {
                                 message.components?.[0]?.components?.[0]?.url ||
                                 "#",
                             channelId: channelId,
+                            messageId: message.id,
+                            guildId: message.guildId,
+                            discordLink: `https://discord.com/channels/${message.guildId}/${channelId}/${message.id}`
                         };
 
                         mods.push(modInfo);
