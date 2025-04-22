@@ -12,7 +12,9 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
-const axios = require("axios"); // Ajout de axios
+const axios = require("axios");
+const fs = require("fs");
+const TICKETS_FILE = path.join(__dirname, 'tickets.json');
 
 // Configuration du bot Discord
 const client = new Client({
@@ -362,6 +364,97 @@ app.post('/api/check-discord-member', async (req, res) => {
         }
         console.error('Erreur OAuth2 Discord:', error);
         res.status(500).json({ success: false, error: 'Erreur Discord OAuth2' });
+    }
+});
+
+// Fonction utilitaire pour lire/écrire les tickets
+function readTickets() {
+    try {
+        if (!fs.existsSync(TICKETS_FILE)) return [];
+        return JSON.parse(fs.readFileSync(TICKETS_FILE, 'utf8'));
+    } catch (e) { return []; }
+}
+function writeTickets(tickets) {
+    fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
+}
+
+// Route pour créer un ticket support
+app.post('/api/ticket', async (req, res) => {
+    try {
+        const { discordUserId, sujet, description } = req.body;
+        if (!discordUserId || !sujet || !description) {
+            return res.status(400).json({ success: false, error: 'Champs manquants' });
+        }
+        // Créer le channel support dans la catégorie
+        const categoryId = '1364246550561165413';
+        const guild = client.guilds.cache.first();
+        if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
+        const user = await client.users.fetch(discordUserId);
+        if (!user) return res.status(404).json({ success: false, error: 'Utilisateur Discord introuvable' });
+        // Nom du channel = ticket-<pseudo>-<timestamp>
+        const channelName = `ticket-${user.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
+        const channel = await guild.channels.create({
+            name: channelName,
+            type: 0, // 0 = GUILD_TEXT
+            parent: categoryId,
+            permissionOverwrites: [
+                { id: guild.roles.everyone, deny: ['ViewChannel'] },
+                { id: discordUserId, allow: ['ViewChannel', 'SendMessages'] },
+                { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
+            ]
+        });
+        // Message d'accueil dans le channel
+        await channel.send(`Nouveau ticket support ouvert par <@${discordUserId}>\n**Sujet :** ${sujet}\n**Description :** ${description}`);
+        // Envoi d'un MP à l'utilisateur
+        await user.send(`Votre ticket a bien été créé ! Rendez-vous sur le serveur dans le channel <#${channel.id}> pour discuter avec le support.`);
+        // Stockage du ticket
+        const tickets = readTickets();
+        const ticket = {
+            id: channel.id,
+            userId: discordUserId,
+            sujet,
+            description,
+            status: 'ouvert',
+            createdAt: Date.now()
+        };
+        tickets.push(ticket);
+        writeTickets(tickets);
+        res.json({ success: true, ticket });
+    } catch (e) {
+        console.error('Erreur création ticket :', e);
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
+});
+
+// Route pour récupérer tous les tickets (panel admin)
+app.get('/api/tickets', (req, res) => {
+    try {
+        const tickets = readTickets();
+        res.json({ success: true, tickets });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
+});
+
+// Route pour supprimer/fermer un ticket (panel admin)
+app.delete('/api/ticket/:id', async (req, res) => {
+    try {
+        const channelId = req.params.id;
+        let tickets = readTickets();
+        const ticket = tickets.find(t => t.id === channelId);
+        if (!ticket) return res.status(404).json({ success: false, error: 'Ticket introuvable' });
+        // Supprimer le channel Discord
+        const guild = client.guilds.cache.first();
+        if (guild) {
+            const channel = guild.channels.cache.get(channelId);
+            if (channel) await channel.delete('Ticket fermé depuis le panel support');
+        }
+        // Mettre à jour le ticket (status fermé)
+        tickets = tickets.map(t => t.id === channelId ? { ...t, status: 'ferme', closedAt: Date.now() } : t);
+        writeTickets(tickets);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
     }
 });
 
