@@ -416,19 +416,61 @@ function writeTickets(tickets) {
     fs.writeFileSync(TICKETS_FILE, JSON.stringify(tickets, null, 2), 'utf8');
 }
 
+const rateLimitMap = new Map(); // userId -> timestamp du dernier ticket
+const RECAPTCHA_SECRET = process.env.RECAPTCHA_SECRET; // à définir dans .env
+const GUILD_ID = '1084589741913153607'; // ID de ton serveur Discord
+
 // Route pour créer un ticket support
 app.post('/api/ticket', async (req, res) => {
     try {
-        const { discordUserId, sujet, description } = req.body;
-        if (!discordUserId || !sujet || !description) {
+        const { sujet, description, captchaToken, access_token } = req.body;
+        if (!access_token || !captchaToken || !sujet || !description) {
             return res.status(400).json({ success: false, error: 'Champs manquants' });
         }
+        // Vérification du captcha Google reCAPTCHA
+        const captchaRes = await axios.post('https://www.google.com/recaptcha/api/siteverify', null, {
+            params: {
+                secret: RECAPTCHA_SECRET,
+                response: captchaToken
+            }
+        });
+        if (!captchaRes.data.success || captchaRes.data.score < 0.5) {
+            return res.status(400).json({ success: false, error: 'Captcha invalide' });
+        }
+        // Vérification du token Discord (OAuth2)
+        let user, userId;
+        try {
+            const userRes = await axios.get('https://discord.com/api/users/@me', {
+                headers: { Authorization: `Bearer ${access_token}` }
+            });
+            user = userRes.data;
+            userId = user.id;
+        } catch {
+            return res.status(401).json({ success: false, error: 'Token Discord invalide' });
+        }
+        // Vérifier que l'utilisateur est bien membre du serveur
+        try {
+            await axios.get(`https://discord.com/api/users/@me/guilds/${GUILD_ID}/member`, {
+                headers: { Authorization: `Bearer ${access_token}` }
+            });
+        } catch {
+            return res.status(403).json({ success: false, error: 'Vous devez être membre du serveur Discord.' });
+        }
+        // Rate limit : 1 ticket toutes les 5 minutes
+        const now = Date.now();
+        if (rateLimitMap.has(userId) && now - rateLimitMap.get(userId) < 5 * 60 * 1000) {
+            return res.status(429).json({ success: false, error: 'Tu dois attendre 5 minutes entre chaque ticket.' });
+        }
+        rateLimitMap.set(userId, now);
+        // Validation stricte des entrées
+        if (sujet.length < 3 || sujet.length > 100 || description.length < 5 || description.length > 1000) {
+            return res.status(400).json({ success: false, error: 'Sujet ou description invalide.' });
+        }
+        // Création du salon Discord (uniquement sur le bon serveur)
+        const guild = client.guilds.cache.get(GUILD_ID);
+        if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté au bon serveur.' });
         const categoryId = '1364246550561165413';
-        const guild = client.guilds.cache.first();
-        if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
-        const user = await client.users.fetch(discordUserId);
-        if (!user) return res.status(404).json({ success: false, error: 'Utilisateur Discord introuvable' });
-        const channelName = `ticket-${user.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
+        const channelName = `ticket-${user.username.toLowerCase()}-${now.toString().slice(-5)}`;
         const channel = await guild.channels.create({
             name: channelName,
             type: 0, // GUILD_TEXT
@@ -436,7 +478,8 @@ app.post('/api/ticket', async (req, res) => {
             permissionOverwrites: [
                 { id: guild.roles.everyone, deny: ['ViewChannel'] },
                 { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
-                { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
+                { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] },
+                { id: userId, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
         const closeRow = new ActionRowBuilder().addComponents(
@@ -446,17 +489,17 @@ app.post('/api/ticket', async (req, res) => {
                 .setStyle(ButtonStyle.Danger)
         );
         await channel.send({
-            content: `Ticket ouvert par ${user.tag} (ID: ${user.id})\n**Sujet :** ${sujet}\n**Description :** ${description}`,
+            content: `Ticket ouvert par ${user.username}#${user.discriminator} (ID: ${userId})\n**Sujet :** ${sujet}\n**Description :** ${description}`,
             components: [closeRow]
         });
         const tickets = readTickets();
         const ticket = {
             id: channel.id,
-            userId: discordUserId,
+            userId,
             sujet,
             description,
             status: 'ouvert',
-            createdAt: Date.now()
+            createdAt: now
         };
         tickets.push(ticket);
         writeTickets(tickets);
