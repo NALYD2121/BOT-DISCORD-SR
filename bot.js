@@ -105,7 +105,7 @@ const CHANNEL_IDS = {
 // ID du canal et du rôle
 const RULES_CHANNEL_ID = "1085617640631971931";
 const MEMBER_ROLE_ID = "1085540034117111889";
-const STAFF_ROLE_ID = 'ID_ROLE_STAFF'; // Remplace par l'ID de ton rôle staff/modo/admin
+const STAFF_ROLE_ID = '1085616282172407838'; // ID du rôle staff/modo/admin
 
 // Création des commandes slash
 const commands = [
