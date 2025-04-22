@@ -96,6 +96,10 @@ const CHANNEL_IDS = {
     },
 };
 
+// ID du canal et du rôle
+const RULES_CHANNEL_ID = "1085617640631971931";
+const MEMBER_ROLE_ID = "1085540034117111889";
+
 // Création des commandes slash
 const commands = [
     new SlashCommandBuilder()
@@ -355,51 +359,99 @@ client.once("ready", async () => {
     }
 });
 
-// Gestion des commandes slash
+// Événement pour gérer les nouveaux membres
+client.on("guildMemberAdd", async (member) => {
+    try {
+        const channel = member.guild.channels.cache.get(RULES_CHANNEL_ID);
+        if (!channel) return console.error("Canal des règles introuvable.");
+
+        const embed = new EmbedBuilder()
+            .setTitle("Bienvenue sur le serveur !")
+            .setDescription(
+                "Veuillez lire et accepter le règlement pour accéder au serveur. Cliquez sur le bouton ci-dessous pour accepter."
+            )
+            .setColor(0x00f7ff);
+
+        const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder()
+                .setCustomId("accept_rules")
+                .setLabel("Accepter le règlement")
+                .setStyle(ButtonStyle.Success)
+        );
+
+        await channel.send({ embeds: [embed], components: [row] });
+    } catch (error) {
+        console.error("Erreur lors de l'envoi du message de bienvenue:", error);
+    }
+});
+
+// Gestion des interactions avec les boutons
 client.on("interactionCreate", async (interaction) => {
-    if (!interaction.isCommand()) return;
+    if (!interaction.isCommand() && !interaction.isButton()) return;
 
-    const { commandName, options } = interaction;
+    if (interaction.isCommand()) {
+        const { commandName, options } = interaction;
 
-    switch (commandName) {
-        case "bump":
-            const channelId = options.getString("channel");
+        switch (commandName) {
+            case "bump":
+                const channelId = options.getString("channel");
 
-            // Arrêter le rappel existant s'il y en a un
-            if (bumpReminders.has(interaction.guildId)) {
-                clearInterval(bumpReminders.get(interaction.guildId));
-            }
+                // Arrêter le rappel existant s'il y en a un
+                if (bumpReminders.has(interaction.guildId)) {
+                    clearInterval(bumpReminders.get(interaction.guildId));
+                }
 
-            // Configurer le nouveau rappel (toutes les 2 heures)
-            const interval = setInterval(
-                () => sendBumpReminder(channelId),
-                2 * 60 * 60 * 1000,
-            );
-            bumpReminders.set(interaction.guildId, interval);
+                // Configurer le nouveau rappel (toutes les 2 heures)
+                const interval = setInterval(
+                    () => sendBumpReminder(channelId),
+                    2 * 60 * 60 * 1000,
+                );
+                bumpReminders.set(interaction.guildId, interval);
 
-            await interaction.reply({
-                content:
-                    "Les rappels de bump ont été configurés ! Je vous préviendrai toutes les 2 heures.",
-                ephemeral: true,
-            });
-            break;
-
-        case "stopbump":
-            if (bumpReminders.has(interaction.guildId)) {
-                clearInterval(bumpReminders.get(interaction.guildId));
-                bumpReminders.delete(interaction.guildId);
-                await interaction.reply({
-                    content: "Les rappels de bump ont été désactivés.",
-                    ephemeral: true,
-                });
-            } else {
                 await interaction.reply({
                     content:
-                        "Aucun rappel de bump n'est actuellement configuré.",
+                        "Les rappels de bump ont été configurés ! Je vous préviendrai toutes les 2 heures.",
+                    ephemeral: true,
+                });
+                break;
+
+            case "stopbump":
+                if (bumpReminders.has(interaction.guildId)) {
+                    clearInterval(bumpReminders.get(interaction.guildId));
+                    bumpReminders.delete(interaction.guildId);
+                    await interaction.reply({
+                        content: "Les rappels de bump ont été désactivés.",
+                        ephemeral: true,
+                    });
+                } else {
+                    await interaction.reply({
+                        content:
+                            "Aucun rappel de bump n'est actuellement configuré.",
+                        ephemeral: true,
+                    });
+                }
+                break;
+        }
+    } else if (interaction.isButton()) {
+        if (interaction.customId === "accept_rules") {
+            try {
+                const member = interaction.member;
+                const role = interaction.guild.roles.cache.get(MEMBER_ROLE_ID);
+                if (!role) return console.error("Rôle membre introuvable.");
+
+                await member.roles.add(role);
+                await interaction.reply({
+                    content: "Merci d'avoir accepté le règlement ! Vous avez maintenant accès au serveur.",
+                    ephemeral: true,
+                });
+            } catch (error) {
+                console.error("Erreur lors de l'ajout du rôle:", error);
+                await interaction.reply({
+                    content: "Une erreur est survenue lors de l'ajout du rôle.",
                     ephemeral: true,
                 });
             }
-            break;
+        }
     }
 });
 
