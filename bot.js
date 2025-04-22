@@ -16,6 +16,9 @@ const axios = require("axios");
 const fs = require("fs");
 const TICKETS_FILE = path.join(__dirname, 'tickets.json');
 
+// Ajout d'un cache simple pour limiter les appels à Discord (5 min)
+const memberCheckCache = new Map(); // key: token, value: {isMember, user, expires}
+
 // Configuration du bot Discord
 const client = new Client({
     intents: [
@@ -342,26 +345,38 @@ app.post('/api/check-discord-member', async (req, res) => {
         if (!access_token) {
             return res.status(400).json({ success: false, error: 'Token Discord manquant' });
         }
-
+        // Vérifier le cache
+        const cached = memberCheckCache.get(access_token);
+        if (cached && cached.expires > Date.now()) {
+            return res.json({ success: true, isMember: cached.isMember, user: cached.user });
+        }
         // 1. Récupérer l'utilisateur Discord
         const userResponse = await axios.get('https://discord.com/api/users/@me', {
             headers: { Authorization: `Bearer ${access_token}` }
         });
         const user = userResponse.data;
-
         // 2. Vérifier l'appartenance au serveur
-        const guildId = '1084589741913153607'; // Remplace par l'ID de ton serveur
-        const memberResponse = await axios.get(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
-            headers: { Authorization: `Bearer ${access_token}` }
-        });
-        const isMember = memberResponse.status === 200;
-
-        res.json({ success: true, isMember, user });
-    } catch (error) {
-        // Si l'utilisateur n'est pas membre, Discord renvoie 404
-        if (error.response && error.response.status === 404) {
-            return res.json({ success: true, isMember: false });
+        const guildId = '1084589741913153607';
+        try {
+            const memberResponse = await axios.get(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
+                headers: { Authorization: `Bearer ${access_token}` }
+            });
+            const isMember = memberResponse.status === 200;
+            // Mettre en cache 5 min
+            memberCheckCache.set(access_token, { isMember, user, expires: Date.now() + 5 * 60 * 1000 });
+            res.json({ success: true, isMember, user });
+        } catch (error) {
+            if (error.response && error.response.status === 429) {
+                const retryAfter = error.response.data?.retry_after || 5;
+                return res.status(429).json({ success: false, error: 'Rate limited', retryAfter });
+            }
+            if (error.response && error.response.status === 404) {
+                memberCheckCache.set(access_token, { isMember: false, user, expires: Date.now() + 5 * 60 * 1000 });
+                return res.json({ success: true, isMember: false, user });
+            }
+            throw error;
         }
+    } catch (error) {
         console.error('Erreur OAuth2 Discord:', error);
         res.status(500).json({ success: false, error: 'Erreur Discord OAuth2' });
     }
@@ -465,6 +480,11 @@ app.delete('/api/ticket/:id', async (req, res) => {
             const channel = guild.channels.cache.get(channelId);
             if (channel) await channel.delete('Ticket fermé depuis le panel support');
         }
+        // Notifier l'utilisateur en MP
+        try {
+            const user = await client.users.fetch(ticket.userId);
+            await user.send('Votre ticket a été fermé par le support. Merci de ne pas répondre à ce ticket fermé, sous peine de sanction (ban). Si besoin, ouvrez un nouveau ticket.');
+        } catch (e) { /* ignore erreur DM */ }
         // Mettre à jour le ticket (status fermé)
         tickets = tickets.map(t => t.id === channelId ? { ...t, status: 'ferme', closedAt: Date.now() } : t);
         writeTickets(tickets);
