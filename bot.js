@@ -738,7 +738,7 @@ app.get("/api/mods/:id", async (req, res) => {
     }
 });
 
-// Connexion du bot Discord
+// Connexion du bot Discords
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error("Erreur de connexion au bot Discord:", error);
 });
