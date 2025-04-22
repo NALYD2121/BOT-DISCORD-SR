@@ -437,7 +437,7 @@ app.post('/api/ticket', async (req, res) => {
         // Message d'accueil dans le channel
         await channel.send(`Nouveau ticket support ouvert par <@${discordUserId}>\n**Sujet :** ${sujet}\n**Description :** ${description}`);
         // Envoi d'un MP à l'utilisateur
-        await user.send(`Votre ticket a bien été créé ! Rendez-vous sur le serveur dans le channel <#${channel.id}> pour discuter avec le support.`);
+        await user.send(`Votre ticket a bien été créé ! Le support va te répondre ici, en message privé. Tu n’as pas besoin d’aller sur le serveur ou dans un salon, reste simplement sur cette conversation Discord.`);
         // Stockage du ticket
         const tickets = readTickets();
         const ticket = {
@@ -705,7 +705,7 @@ client.on('messageCreate', async (message) => {
         tickets.push(ticket);
         writeTickets(tickets);
         // Confirmer à l'utilisateur
-        await message.author.send('Ton ticket a bien été créé ! Le support va te répondre ici.');
+        await message.author.send('Ton ticket a bien été créé ! Le support va te répondre ici, en message privé. Tu n’as pas besoin d’aller sur le serveur ou dans un salon, reste simplement sur cette conversation Discord.');
     } else {
         // Si ticket déjà ouvert, relayer le message dans le channel support
         const channel = guild.channels.cache.get(ticket.id);
