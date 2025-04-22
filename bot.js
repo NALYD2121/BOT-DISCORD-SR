@@ -648,6 +648,70 @@ client.on("interactionCreate", async (interaction) => {
     }
 });
 
+// Gestion des MP pour système de ticket synchronisé
+client.on('messageCreate', async (message) => {
+    // Ignorer les messages du bot ou les messages en guild
+    if (message.author.bot || message.guild) return;
+
+    // Vérifier si l'utilisateur a déjà un ticket ouvert
+    let tickets = readTickets();
+    let ticket = tickets.find(t => t.userId === message.author.id && t.status === 'ouvert');
+    const guild = client.guilds.cache.first();
+    const categoryId = '1364246550561165413';
+
+    // Si pas de ticket, créer un nouveau channel support
+    if (!ticket) {
+        const channelName = `ticket-${message.author.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
+        const channel = await guild.channels.create({
+            name: channelName,
+            type: 0, // GUILD_TEXT
+            parent: categoryId,
+            permissionOverwrites: [
+                { id: guild.roles.everyone, deny: ['ViewChannel'] },
+                { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] }
+            ]
+        });
+        // Message d'accueil dans le channel
+        await channel.send(`Ticket ouvert par ${message.author.tag} (ID: ${message.author.id})\n**Message initial :** ${message.content}`);
+        // Stocker le ticket
+        ticket = {
+            id: channel.id,
+            userId: message.author.id,
+            sujet: 'Ticket via MP',
+            description: message.content,
+            status: 'ouvert',
+            createdAt: Date.now()
+        };
+        tickets.push(ticket);
+        writeTickets(tickets);
+        // Confirmer à l'utilisateur
+        await message.author.send('Ton ticket a bien été créé ! Le support va te répondre ici.');
+    } else {
+        // Si ticket déjà ouvert, relayer le message dans le channel support
+        const channel = guild.channels.cache.get(ticket.id);
+        if (channel) {
+            await channel.send(`**[Utilisateur]** ${message.author.tag} : ${message.content}`);
+        }
+    }
+});
+
+// Relais des messages du staff vers l'utilisateur en MP
+client.on('messageCreate', async (message) => {
+    // Uniquement dans un channel ticket support
+    if (message.guild && message.channel.parentId === '1364246550561165413' && !message.author.bot) {
+        let tickets = readTickets();
+        const ticket = tickets.find(t => t.id === message.channel.id && t.status === 'ouvert');
+        if (ticket) {
+            try {
+                const user = await client.users.fetch(ticket.userId);
+                await user.send(`**[Support]** ${message.author.tag} : ${message.content}`);
+            } catch (e) {
+                message.channel.send('Impossible d’envoyer le message à l’utilisateur (DM fermés ?).');
+            }
+        }
+    }
+});
+
 function cleanText(text) {
     if (!text) return "";
     return text
