@@ -787,6 +787,8 @@ client.on('messageCreate', async (message) => {
         const channel = guild.channels.cache.get(ticket.id);
         if (channel) {
             await channel.send(`**[Utilisateur]** ${message.author.tag} : ${message.content}`);
+            // Confirmation à l'utilisateur même si le ticket est déjà ouvert
+            await message.author.send('Votre message a bien été transmis au support.');
         }
     }
 });
