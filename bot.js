@@ -12,6 +12,7 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const cors = require("cors");
+const axios = require("axios"); // Ajout de axios
 
 // Configuration du bot Discord
 const client = new Client({
@@ -326,6 +327,38 @@ app.get("/api/mods/:category", async (req, res) => {
     } catch (error) {
         console.error("Erreur générale:", error);
         res.status(500).json({ success: false, error: "Erreur serveur" });
+    }
+});
+
+// Route pour vérifier si l'utilisateur est membre du serveur Discord
+app.post('/api/check-discord-member', async (req, res) => {
+    try {
+        const { access_token } = req.body;
+        if (!access_token) {
+            return res.status(400).json({ success: false, error: 'Token Discord manquant' });
+        }
+
+        // 1. Récupérer l'utilisateur Discord
+        const userResponse = await axios.get('https://discord.com/api/users/@me', {
+            headers: { Authorization: `Bearer ${access_token}` }
+        });
+        const user = userResponse.data;
+
+        // 2. Vérifier l'appartenance au serveur
+        const guildId = '1084589741913153607'; // Remplace par l'ID de ton serveur
+        const memberResponse = await axios.get(`https://discord.com/api/users/@me/guilds/${guildId}/member`, {
+            headers: { Authorization: `Bearer ${access_token}` }
+        });
+        const isMember = memberResponse.status === 200;
+
+        res.json({ success: true, isMember, user });
+    } catch (error) {
+        // Si l'utilisateur n'est pas membre, Discord renvoie 404
+        if (error.response && error.response.status === 404) {
+            return res.json({ success: true, isMember: false });
+        }
+        console.error('Erreur OAuth2 Discord:', error);
+        res.status(500).json({ success: false, error: 'Erreur Discord OAuth2' });
     }
 });
 
