@@ -130,6 +130,12 @@ const activateRulesCommand = new SlashCommandBuilder()
 
 commands.push(activateRulesCommand);
 
+// Ajout de la commande /ticket pour envoyer le bouton de création de ticket
+const ticketButtonCommand = new SlashCommandBuilder()
+    .setName("ticket")
+    .setDescription("Envoie le bouton pour ouvrir un ticket dans le salon support");
+commands.push(ticketButtonCommand);
+
 // Fonction pour envoyer un rappel de bump
 async function sendBumpReminder(channelId) {
     try {
@@ -659,6 +665,30 @@ client.on("interactionCreate", async (interaction) => {
                     });
                 }
                 break;
+
+            case "ticket":
+                try {
+                    const supportChannel = await interaction.guild.channels.fetch('1085629595082039437');
+                    if (!supportChannel) {
+                        await interaction.reply({ content: "Salon support introuvable.", ephemeral: true });
+                        return;
+                    }
+                    const embed = new EmbedBuilder()
+                        .setTitle("Support - Ouvre un ticket")
+                        .setDescription("Clique sur le bouton ci-dessous pour ouvrir un ticket avec le support. Un salon privé sera créé pour toi.")
+                        .setColor(0x00f7ff);
+                    const row = new ActionRowBuilder().addComponents(
+                        new ButtonBuilder()
+                            .setCustomId("open_ticket")
+                            .setLabel("Ouvrir un ticket")
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                    await supportChannel.send({ embeds: [embed], components: [row] });
+                    await interaction.reply({ content: "Bouton envoyé dans le salon support !", ephemeral: true });
+                } catch (e) {
+                    await interaction.reply({ content: "Erreur lors de l'envoi du bouton.", ephemeral: true });
+                }
+                break;
         }
     } else if (interaction.isButton()) {
         if (interaction.customId === "accept_rules") {
@@ -696,6 +726,50 @@ client.on("interactionCreate", async (interaction) => {
                     await interaction.channel.delete('Ticket fermé via bouton Discord');
                 }
             }
+        } else if (interaction.customId === 'open_ticket') {
+            // Création d'un ticket via bouton
+            const guild = interaction.guild;
+            const user = interaction.user;
+            const categoryId = '1364246550561165413';
+            let tickets = readTickets();
+            let ticket = tickets.find(t => t.userId === user.id && t.status === 'ouvert');
+            if (ticket) {
+                await interaction.reply({ content: 'Tu as déjà un ticket ouvert !', ephemeral: true });
+                return;
+            }
+            const channelName = `ticket-${user.username.toLowerCase()}-${Date.now().toString().slice(-5)}`;
+            const channel = await guild.channels.create({
+                name: channelName,
+                type: 0, // GUILD_TEXT
+                parent: categoryId,
+                permissionOverwrites: [
+                    { id: guild.roles.everyone, deny: ['ViewChannel'] },
+                    { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
+                    { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] },
+                    { id: user.id, allow: ['ViewChannel', 'SendMessages'] }
+                ]
+            });
+            const closeRow = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('close_ticket')
+                    .setLabel('Fermer le ticket')
+                    .setStyle(ButtonStyle.Danger)
+            );
+            await channel.send({
+                content: `Ticket ouvert par ${user.tag} (ID: ${user.id})\nExplique ton problème ici, un membre du support va te répondre.`,
+                components: [closeRow]
+            });
+            ticket = {
+                id: channel.id,
+                userId: user.id,
+                sujet: 'Ticket via bouton',
+                description: '',
+                status: 'ouvert',
+                createdAt: Date.now()
+            };
+            tickets.push(ticket);
+            writeTickets(tickets);
+            await interaction.reply({ content: 'Ton ticket a bien été créé !', ephemeral: true });
         }
     }
 });
