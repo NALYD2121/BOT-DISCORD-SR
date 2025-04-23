@@ -448,7 +448,7 @@ app.post('/api/ticket', async (req, res) => {
         }
         // Rate limit : aucune limite (0 seconde)
         // Désactivation du rate limit
-        rateLimitMap.set(userId, now);
+        // (Suppression de rateLimitMap.set(userId, now); car now n'est plus défini)
         // Validation stricte des entrées
         if (sujet.length < 3 || sujet.length > 100 || description.length < 5 || description.length > 1000) {
             return res.status(400).json({ success: false, error: 'Sujet ou description invalide.' });
