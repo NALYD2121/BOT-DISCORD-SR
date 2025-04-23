@@ -466,7 +466,7 @@ app.post('/api/ticket', async (req, res) => {
             permissionOverwrites: [
                 { id: guild.roles.everyone, deny: ['ViewChannel'] },
                 { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
-                { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] },
+                { id: client.user.id, allow: ['ViewChannel', 'SendMessages'] },
                 { id: userId, allow: ['ViewChannel', 'SendMessages'] }
             ]
         });
@@ -770,7 +770,7 @@ client.on("interactionCreate", async (interaction) => {
                 permissionOverwrites: [
                     { id: guild.roles.everyone, deny: ['ViewChannel'] },
                     { id: STAFF_ROLE_ID, allow: ['ViewChannel', 'SendMessages'] },
-                    { id: guild.members.me.id, allow: ['ViewChannel', 'SendMessages'] },
+                    { id: client.user.id, allow: ['ViewChannel', 'SendMessages'] },
                     { id: user.id, allow: ['ViewChannel', 'SendMessages'] }
                 ]
             });
