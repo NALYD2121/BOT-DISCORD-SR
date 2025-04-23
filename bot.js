@@ -429,7 +429,7 @@ app.post('/api/ticket', async (req, res) => {
         }
         // Vérification du token Discord (OAuth2)
         let user, userId;
-        const now = Date.now(); // Correction : définition de now
+        const now = Date.now();
         try {
             const userRes = await axios.get('https://discord.com/api/users/@me', {
                 headers: { Authorization: `Bearer ${access_token}` }
@@ -447,9 +447,6 @@ app.post('/api/ticket', async (req, res) => {
         } catch {
             return res.status(403).json({ success: false, error: 'Vous devez être membre du serveur Discord.' });
         }
-        // Rate limit : aucune limite (0 seconde)
-        // Désactivation du rate limit
-        // (Suppression de rateLimitMap.set(userId, now); car now n'est plus défini)
         // Validation stricte des entrées
         if (sujet.length < 3 || sujet.length > 100 || description.length < 5 || description.length > 1000) {
             return res.status(400).json({ success: false, error: 'Sujet ou description invalide.' });
@@ -457,6 +454,15 @@ app.post('/api/ticket', async (req, res) => {
         // Création du salon Discord (uniquement sur le bon serveur)
         const guild = client.guilds.cache.get(GUILD_ID);
         if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté au bon serveur.' });
+        // Vérification des rôles avant création du salon
+        const staffRole = guild.roles.cache.get(STAFF_ROLE_ID);
+        if (!staffRole) {
+            return res.status(500).json({ success: false, error: 'Le rôle staff (support) est introuvable sur le serveur Discord.' });
+        }
+        const memberUser = await guild.members.fetch(userId).catch(() => null);
+        if (!memberUser) {
+            return res.status(500).json({ success: false, error: 'Utilisateur introuvable sur le serveur Discord.' });
+        }
         const categoryId = '1364246550561165413';
         const channelName = `ticket-${user.username.toLowerCase()}-${now.toString().slice(-5)}`;
         const channel = await guild.channels.create({
