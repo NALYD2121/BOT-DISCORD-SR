@@ -535,48 +535,6 @@ app.delete('/api/ticket/:id', async (req, res) => {
     }
 });
 
-// === LIVECHAT SYNCHRO DISCORD ===
-// Récupérer les derniers messages du channel support
-app.get('/api/livechat/messages', async (req, res) => {
-    try {
-        const channelId = '1363886452466782381';
-        const channel = await client.channels.fetch(channelId);
-        if (!channel) return res.status(404).json({ success: false, error: 'Channel introuvable' });
-        const messages = await channel.messages.fetch({ limit: 30 });
-        // On renvoie les messages du plus ancien au plus récent
-        const formatted = Array.from(messages.values())
-            .sort((a, b) => a.createdTimestamp - b.createdTimestamp)
-            .map(m => ({
-                id: m.id,
-                author: {
-                    username: m.author.username,
-                    avatar: m.author.displayAvatarURL()
-                },
-                content: m.content,
-                createdAt: m.createdTimestamp
-            }));
-        res.json({ success: true, messages: formatted });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Erreur serveur' });
-    }
-});
-
-// Poster un message sur le channel support depuis le site
-app.post('/api/livechat/message', async (req, res) => {
-    try {
-        const { content, pseudo } = req.body;
-        if (!content || !pseudo) return res.status(400).json({ success: false, error: 'Champs manquants' });
-        const channelId = '1363886452466782381';
-        const channel = await client.channels.fetch(channelId);
-        if (!channel) return res.status(404).json({ success: false, error: 'Channel introuvable' });
-        // Le bot poste le message avec le pseudo fourni
-        await channel.send(`**[Web] ${pseudo} :** ${content}`);
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Erreur serveur' });
-    }
-});
-
 // Événement de connexion du bot
 client.once("ready", async () => {
     console.log(`Bot connecté en tant que ${client.user.tag}`);
