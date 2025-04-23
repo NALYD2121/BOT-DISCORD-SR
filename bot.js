@@ -429,6 +429,7 @@ app.post('/api/ticket', async (req, res) => {
         }
         // Vérification du token Discord (OAuth2)
         let user, userId;
+        const now = Date.now(); // Correction : définition de now
         try {
             const userRes = await axios.get('https://discord.com/api/users/@me', {
                 headers: { Authorization: `Bearer ${access_token}` }
