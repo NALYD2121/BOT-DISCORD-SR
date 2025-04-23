@@ -446,11 +446,8 @@ app.post('/api/ticket', async (req, res) => {
         } catch {
             return res.status(403).json({ success: false, error: 'Vous devez être membre du serveur Discord.' });
         }
-        // Rate limit : 1 ticket toutes les 30 secondes
-        const now = Date.now();
-        if (rateLimitMap.has(userId) && now - rateLimitMap.get(userId) < 30 * 1000) {
-            return res.status(429).json({ success: false, error: 'Tu dois attendre 30 secondes entre chaque ticket.' });
-        }
+        // Rate limit : aucune limite (0 seconde)
+        // Désactivation du rate limit
         rateLimitMap.set(userId, now);
         // Validation stricte des entrées
         if (sujet.length < 3 || sujet.length > 100 || description.length < 5 || description.length > 1000) {
