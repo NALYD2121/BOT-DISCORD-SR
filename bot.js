@@ -15,6 +15,26 @@ const cors = require("cors");
 const axios = require("axios");
 const fs = require("fs");
 const TICKETS_FILE = path.join(__dirname, 'tickets.json');
+const DISCORD_USERS_FILE = path.join(__dirname, 'discord_users.json');
+const DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
+function readDiscordUsers() {
+    try {
+        if (!fs.existsSync(DISCORD_USERS_FILE)) return [];
+        return JSON.parse(fs.readFileSync(DISCORD_USERS_FILE, 'utf8'));
+    } catch (e) { return []; }
+}
+function writeDiscordUsers(users) {
+    fs.writeFileSync(DISCORD_USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+}
+function readDownloads() {
+    try {
+        if (!fs.existsSync(DOWNLOADS_FILE)) return [];
+        return JSON.parse(fs.readFileSync(DOWNLOADS_FILE, 'utf8'));
+    } catch (e) { return []; }
+}
+function writeDownloads(logs) {
+    fs.writeFileSync(DOWNLOADS_FILE, JSON.stringify(logs, null, 2), 'utf8');
+}
 
 // Ajout d'un cache simple pour limiter les appels à Discord (5 min)
 const memberCheckCache = new Map(); // key: token, value: {isMember, user, expires}
@@ -493,7 +513,8 @@ app.post('/api/ticket', async (req, res) => {
             sujet,
             description,
             status: 'ouvert',
-            createdAt: now
+            createdAt: now,
+            customStatus: 'En attente'
         };
         tickets.push(ticket);
         writeTickets(tickets);
@@ -539,6 +560,20 @@ app.delete('/api/ticket/:id', async (req, res) => {
     } catch (e) {
         res.status(500).json({ success: false, error: 'Erreur serveur' });
     }
+});
+
+// Route pour changer le statut personnalisé d'un ticket
+app.post('/api/ticket/:id/status', (req, res) => {
+    const { id } = req.params;
+    const { customStatus } = req.body;
+    const allowed = ['En attente', 'En cours', 'Résolu', 'Fermé'];
+    if (!allowed.includes(customStatus)) return res.status(400).json({ success: false, error: 'Statut invalide' });
+    let tickets = readTickets();
+    const ticketIndex = tickets.findIndex(t => t.id === id);
+    if (ticketIndex === -1) return res.status(404).json({ success: false, error: 'Ticket introuvable' });
+    tickets[ticketIndex].customStatus = customStatus;
+    writeTickets(tickets);
+    res.json({ success: true });
 });
 
 // Événement de connexion du bot
@@ -853,6 +888,105 @@ app.get("/api/mods/:id", async (req, res) => {
     } catch (error) {
         console.error("Erreur lors de la récupération du mod:", error);
         res.status(500).json({ error: "Erreur serveur" });
+    }
+});
+
+// Route pour stats dashboard admin : nombre de mods par catégorie
+app.get('/api/admin-stats', async (req, res) => {
+    try {
+        // On compte les messages (mods) dans chaque catégorie
+        const result = { armes: 0, vehicules: 0, peds: 0, total: 0 };
+        const catMap = {
+            ARME: 'armes',
+            VEHICULE: 'vehicules',
+            PERSONNAGE: 'peds'
+        };
+        for (const [cat, label] of Object.entries(catMap)) {
+            let count = 0;
+            const channels = Object.values(CHANNEL_IDS[cat] || {});
+            for (const channelId of channels) {
+                try {
+                    const channel = await client.channels.fetch(channelId);
+                    if (!channel) continue;
+                    const messages = await channel.messages.fetch({ limit: 100 });
+                    // On ne compte que les messages avec embed (donc des mods)
+                    count += Array.from(messages.values()).filter(m => m.embeds && m.embeds.length > 0).length;
+                } catch {}
+            }
+            result[label] = count;
+            result.total += count;
+        }
+        res.json({ success: true, stats: result });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur stats admin' });
+    }
+});
+
+// Enregistrer un téléchargement
+app.post('/api/log-download', (req, res) => {
+    const { userId, username, modName, modId, date } = req.body;
+    if (!userId || !modName || !date) return res.status(400).json({ success: false, error: 'Champs manquants' });
+    let logs = readDownloads();
+    logs.push({ userId, username, modName, modId, date });
+    writeDownloads(logs);
+    res.json({ success: true });
+});
+
+// Récupérer les logs de téléchargement (admin)
+app.get('/api/download-logs', (req, res) => {
+    const logs = readDownloads();
+    res.json({ success: true, logs });
+});
+
+// Enregistrer chaque connexion Discord
+app.post('/api/discord-login', (req, res) => {
+    const { id, username, discriminator, avatar } = req.body;
+    if (!id || !username) return res.status(400).json({ success: false, error: 'Champs manquants' });
+    let users = readDiscordUsers();
+    const existing = users.find(u => u.id === id);
+    if (existing) {
+        existing.lastLogin = Date.now();
+        existing.username = username;
+        existing.discriminator = discriminator;
+        existing.avatar = avatar;
+    } else {
+        users.push({ id, username, discriminator, avatar, lastLogin: Date.now() });
+    }
+    writeDiscordUsers(users);
+    res.json({ success: true });
+});
+
+// Récupérer la liste des utilisateurs connectés
+app.get('/api/discord-users', (req, res) => {
+    const users = readDiscordUsers();
+    res.json({ success: true, users });
+});
+
+// Répondre à un ticket (envoi dans le salon du ticket Discord + historique)
+app.post('/api/ticket/:id/reply', async (req, res) => {
+    const { id } = req.params;
+    const { message, admin } = req.body;
+    if (!message) return res.status(400).json({ success: false, error: 'Message manquant' });
+    let tickets = readTickets();
+    const ticketIndex = tickets.findIndex(t => t.id === id);
+    if (ticketIndex === -1) return res.status(404).json({ success: false, error: 'Ticket introuvable' });
+    try {
+        const guild = client.guilds.cache.first();
+        if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
+        const channel = guild.channels.cache.get(id);
+        if (!channel) return res.status(404).json({ success: false, error: 'Salon du ticket introuvable' });
+        await channel.send(`Réponse du support :\n${message}`);
+        // Ajout à l'historique
+        if (!tickets[ticketIndex].history) tickets[ticketIndex].history = [];
+        tickets[ticketIndex].history.push({
+            message,
+            admin: admin || 'admin',
+            date: Date.now()
+        });
+        writeTickets(tickets);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Impossible d\'envoyer le message dans le salon du ticket' });
     }
 });
 
