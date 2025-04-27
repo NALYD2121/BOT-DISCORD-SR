@@ -425,6 +425,58 @@ app.post('/api/is-support-admin', async (req, res) => {
     }
 });
 
+// NOUVELLE ROUTE - Correspond à celle attendue par le site web
+app.post('/api/admin/check', async (req, res) => {
+    try {
+        const { Authorization } = req.headers;
+        if (!Authorization) {
+            return res.status(401).json({ isAdmin: false, error: 'Token manquant' });
+        }
+        
+        const token = Authorization.replace('Bearer ', '');
+        
+        // Vérifier le token Discord (OAuth2)
+        try {
+            const userRes = await axios.get('https://discord.com/api/users/@me', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const user = userRes.data;
+            const userId = user.id;
+            
+            // Vérifier si l'utilisateur est admin
+            const isAdminId = ADMIN_IDS = [
+                '1085616282172407838', // ID fourni par l'utilisateur
+                // Ajoutez d'autres IDs d'administrateurs si nécessaire
+            ].includes(userId);
+            
+            if (isAdminId) {
+                return res.json({ isAdmin: true, userId });
+            }
+            
+            // Vérifier par les rôles sur le serveur Discord
+            const guild = client.guilds.cache.first();
+            if (!guild) {
+                return res.json({ isAdmin: false, error: 'Bot non connecté à un serveur' });
+            }
+            
+            try {
+                const member = await guild.members.fetch(userId);
+                const hasRole = member.roles.cache.has('1085616282172407838');
+                return res.json({ isAdmin: hasRole, userId });
+            } catch (e) {
+                console.error('Erreur vérification membre:', e);
+                return res.json({ isAdmin: false, error: 'Membre introuvable sur le serveur' });
+            }
+        } catch (e) {
+            console.error('Erreur vérification OAuth2:', e);
+            return res.json({ isAdmin: false, error: 'Token Discord invalide' });
+        }
+    } catch (e) {
+        console.error('Erreur générale route admin/check:', e);
+        return res.status(500).json({ isAdmin: false, error: 'Erreur serveur' });
+    }
+});
+
 // Fonction utilitaire pour lire/écrire les tickets
 function readTickets() {
     try {
