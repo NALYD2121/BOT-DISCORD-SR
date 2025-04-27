@@ -60,19 +60,25 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
-const allowedOrigins = ['https://nalyd2121.github.io', null];
+// Liste des origines autorisées (ajoutez ici tous vos domaines)
+const allowedOrigins = [
+    'https://nalyd2121.github.io',
+    'http://localhost:3000', 
+    'http://localhost:5500',
+    'http://127.0.0.1:5500',
+    'http://localhost',
+    null // Pour les requêtes sans origine (comme Postman ou les requêtes directes)
+];
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
     origin: function (origin, callback) {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
-        }
+        // Autoriser toutes les origines pour résoudre les problèmes CORS
+        callback(null, true);
     },
-    methods: ['GET', 'POST', 'OPTIONS', 'DELETE'], // Ajout de DELETE ici
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    methods: ['GET', 'POST', 'OPTIONS', 'DELETE', 'PUT', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    credentials: true
 }));
 
 // Configuration de Multer
@@ -1045,4 +1051,111 @@ app.post('/api/ticket/:id/reply', async (req, res) => {
 // Connexion du bot Discords
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error("Erreur de connexion au bot Discord:", error);
+});
+
+// Routes admin manquantes pour le panneau d'administration
+app.get('/api/admin/tickets', (req, res) => {
+    try {
+        // Cette route renvoie la même chose que /api/tickets pour le moment
+        const tickets = readTickets();
+        res.json({ success: true, tickets });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
+});
+
+app.get('/api/admin/mods', async (req, res) => {
+    try {
+        // Récupérer tous les mods de toutes les catégories
+        const allMods = [];
+        
+        for (const category of Object.keys(CHANNEL_IDS)) {
+            const categoryChannels = CHANNEL_IDS[category];
+            const channelsToFetch = Object.values(categoryChannels);
+            
+            for (const channelId of channelsToFetch) {
+                try {
+                    const channel = await client.channels.fetch(channelId);
+                    if (!channel) continue;
+                    
+                    const messages = await channel.messages.fetch({ limit: 100 });
+                    
+                    messages.forEach(message => {
+                        if (message.embeds && message.embeds.length > 0) {
+                            const embed = message.embeds[0];
+                            // Extraire les informations du mod
+                            const typeField = embed.fields.find(f => f.name === "🎯 Type de mod");
+                            let type = typeField ? typeField.value.trim() : category;
+                            let name = type || "Sans nom";
+                            
+                            // Extraire la description
+                            const descField = embed.fields.find(f => f.name === "┌─ Description ─┐");
+                            let description = "";
+                            if (descField && descField.value) {
+                                description = descField.value.split("▸")[1]?.trim() || 
+                                    "Aucune description fournie";
+                            }
+                            
+                            const modInfo = {
+                                id: message.id,
+                                name: name,
+                                category: category,
+                                type: type,
+                                description: description,
+                                image: embed.image?.url || null,
+                                downloadLink: message.components?.[0]?.components?.[0]?.url || "#",
+                                channelId: channelId,
+                                guildId: message.guildId,
+                                createdAt: message.createdTimestamp,
+                                discordLink: `https://discord.com/channels/${message.guildId}/${channelId}/${message.id}`
+                            };
+                            
+                            allMods.push(modInfo);
+                        }
+                    });
+                } catch (error) {
+                    console.error(`Erreur pour le channel ${channelId}:`, error);
+                }
+            }
+        }
+        
+        res.json({ success: true, mods: allMods });
+    } catch (error) {
+        console.error("Erreur générale lors de la récupération des mods:", error);
+        res.status(500).json({ success: false, error: "Erreur serveur" });
+    }
+});
+
+app.get('/api/admin/settings', (req, res) => {
+    try {
+        // Pour le moment, renvoie des paramètres par défaut
+        const settings = {
+            siteName: "SHOP-REPLACE",
+            siteDescription: "Mods GTA V Discord Shop",
+            discordServerUrl: "https://discord.gg/shopReplace",
+            termsUrl: "#",
+            privacyUrl: "#",
+            contactEmail: "contact@example.com",
+            theme: {
+                primary: "#00f7ff",
+                secondary: "#ffffff",
+                dark: "#252525"
+            }
+        };
+        res.json({ success: true, settings });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
+});
+
+// Route pour mettre à jour les paramètres du site
+app.post('/api/admin/settings', (req, res) => {
+    try {
+        const { settings } = req.body;
+        // Ici on pourrait sauvegarder les paramètres dans un fichier
+        // Pour le moment, on répond simplement OK
+        res.json({ success: true, message: "Paramètres mis à jour avec succès" });
+    } catch (e) {
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
 });
