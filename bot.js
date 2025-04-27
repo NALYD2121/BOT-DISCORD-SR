@@ -60,25 +60,19 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
-// Liste des origines autorisées (ajoutez ici tous vos domaines)
-const allowedOrigins = [
-    'https://nalyd2121.github.io',
-    'http://localhost:3000', 
-    'http://localhost:5500',
-    'http://127.0.0.1:5500',
-    'http://localhost',
-    null // Pour les requêtes sans origine (comme Postman ou les requêtes directes)
-];
+const allowedOrigins = ['https://nalyd2121.github.io', null];
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
     origin: function (origin, callback) {
-        // Autoriser toutes les origines pour résoudre les problèmes CORS
-        callback(null, true);
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
     },
-    methods: ['GET', 'POST', 'OPTIONS', 'DELETE', 'PUT', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-    credentials: true
+    methods: ['GET', 'POST', 'OPTIONS', 'DELETE'], // Ajout de DELETE ici
+    allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
 // Configuration de Multer
@@ -90,6 +84,36 @@ const upload = multer({
 
 // Stockage des rappels bump
 const bumpReminders = new Map();
+
+// Fonction optimisée pour gérer les rappels bump
+function scheduleBumpReminder(guildId, channelId) {
+    // Annuler tout rappel existant pour ce canal
+    if (bumpReminders.has(channelId)) {
+        clearTimeout(bumpReminders.get(channelId));
+    }
+    
+    // Planifier un nouveau rappel (2 heures = 7200000 ms)
+    const reminderId = setTimeout(async () => {
+        try {
+            const channel = client.channels.cache.get(channelId);
+            if (!channel) return;
+            
+            // Utiliser une seule opération d'envoi de message pour économiser les ressources
+            await channel.send({
+                content: `<@&1085593176072835092> Le bump est de nouveau disponible !`,
+                allowedMentions: { roles: ['1085593176072835092'] }
+            });
+            
+            // Supprimer ce rappel de la carte après son exécution
+            bumpReminders.delete(channelId);
+        } catch (error) {
+            console.error('Erreur lors de l\'envoi du rappel de bump:', error);
+        }
+    }, 7200000);
+    
+    // Stocker l'ID du timeout pour annulation ultérieure si nécessaire
+    bumpReminders.set(channelId, reminderId);
+}
 
 // Configuration des IDs des canaux Discord
 const CHANNEL_IDS = {
@@ -161,22 +185,6 @@ const ticketButtonCommand = new SlashCommandBuilder()
     .setName("ticket")
     .setDescription("Envoie le bouton pour ouvrir un ticket dans le salon support");
 commands.push(ticketButtonCommand);
-
-// Fonction pour envoyer un rappel de bump
-async function sendBumpReminder(channelId) {
-    try {
-        const channel = await client.channels.fetch(channelId);
-        if (channel) {
-            await channel.send({
-                content:
-                    "@everyone C'est l'heure de bump ! Utilisez `/bump` pour augmenter la visibilité du serveur !",
-                allowedMentions: { parse: ["everyone"] },
-            });
-        }
-    } catch (error) {
-        console.error("Erreur lors de l'envoi du rappel:", error);
-    }
-}
 
 // Middleware pour parser le JSON
 app.use(express.json());
@@ -431,58 +439,6 @@ app.post('/api/is-support-admin', async (req, res) => {
     }
 });
 
-// NOUVELLE ROUTE - Correspond à celle attendue par le site web
-app.post('/api/admin/check', async (req, res) => {
-    try {
-        const { Authorization } = req.headers;
-        if (!Authorization) {
-            return res.status(401).json({ isAdmin: false, error: 'Token manquant' });
-        }
-        
-        const token = Authorization.replace('Bearer ', '');
-        
-        // Vérifier le token Discord (OAuth2)
-        try {
-            const userRes = await axios.get('https://discord.com/api/users/@me', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const user = userRes.data;
-            const userId = user.id;
-            
-            // Vérifier si l'utilisateur est admin
-            const isAdminId = ADMIN_IDS = [
-                '1085616282172407838', // ID fourni par l'utilisateur
-                // Ajoutez d'autres IDs d'administrateurs si nécessaire
-            ].includes(userId);
-            
-            if (isAdminId) {
-                return res.json({ isAdmin: true, userId });
-            }
-            
-            // Vérifier par les rôles sur le serveur Discord
-            const guild = client.guilds.cache.first();
-            if (!guild) {
-                return res.json({ isAdmin: false, error: 'Bot non connecté à un serveur' });
-            }
-            
-            try {
-                const member = await guild.members.fetch(userId);
-                const hasRole = member.roles.cache.has('1085616282172407838');
-                return res.json({ isAdmin: hasRole, userId });
-            } catch (e) {
-                console.error('Erreur vérification membre:', e);
-                return res.json({ isAdmin: false, error: 'Membre introuvable sur le serveur' });
-            }
-        } catch (e) {
-            console.error('Erreur vérification OAuth2:', e);
-            return res.json({ isAdmin: false, error: 'Token Discord invalide' });
-        }
-    } catch (e) {
-        console.error('Erreur générale route admin/check:', e);
-        return res.status(500).json({ isAdmin: false, error: 'Erreur serveur' });
-    }
-});
-
 // Fonction utilitaire pour lire/écrire les tickets
 function readTickets() {
     try {
@@ -675,6 +631,7 @@ client.once("ready", async () => {
 // Événement pour gérer les nouveaux membres
 client.on("guildMemberAdd", async (member) => {
     try {
+        // Message dans le salon des règles
         const channel = member.guild.channels.cache.get(RULES_CHANNEL_ID);
         if (!channel) return console.error("Canal des règles introuvable.");
 
@@ -693,6 +650,29 @@ client.on("guildMemberAdd", async (member) => {
         );
 
         await channel.send({ embeds: [embed], components: [row] });
+        
+        // Nouveau code : Envoyer un message de bienvenue personnalisé en MP
+        try {
+            const welcomeEmbed = new EmbedBuilder()
+                .setTitle(`🎉 Bienvenue sur SHOP REPLACE, ${member.user.username} !`)
+                .setDescription(
+                    "Merci de nous avoir rejoint ! Notre serveur est dédié aux remplacements de haute qualité pour GTA V.\n\n" +
+                    "✅ Voici ce que tu peux faire maintenant :\n" +
+                    "• Accepter le règlement dans <#" + RULES_CHANNEL_ID + "> pour accéder au serveur\n" +
+                    "• Explorer notre large catalogue de mods dans les différents salons\n" +
+                    "• Ouvrir un ticket dans le salon support si tu as des questions\n\n" +
+                    "Nous espérons que tu trouveras des mods qui te plaisent !"
+                )
+                .setColor(0x00f7ff)
+                .setImage("https://cdn.discordapp.com/avatars/" + client.user.id + "/" + client.user.avatar + ".png")
+                .setFooter({ text: "SHOP REPLACE • " + new Date().toLocaleDateString("fr-FR") });
+
+            await member.user.send({ embeds: [welcomeEmbed] });
+            console.log(`Message de bienvenue en MP envoyé à ${member.user.tag}`);
+        } catch (error) {
+            console.error(`Impossible d'envoyer un MP à ${member.user.tag}:`, error);
+            // En cas d'échec (utilisateur a désactivé ses MPs), on ne fait rien mais on continue
+        }
     } catch (error) {
         console.error("Erreur lors de l'envoi du message de bienvenue:", error);
     }
@@ -1051,111 +1031,4 @@ app.post('/api/ticket/:id/reply', async (req, res) => {
 // Connexion du bot Discords
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error("Erreur de connexion au bot Discord:", error);
-});
-
-// Routes admin manquantes pour le panneau d'administration
-app.get('/api/admin/tickets', (req, res) => {
-    try {
-        // Cette route renvoie la même chose que /api/tickets pour le moment
-        const tickets = readTickets();
-        res.json({ success: true, tickets });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Erreur serveur' });
-    }
-});
-
-app.get('/api/admin/mods', async (req, res) => {
-    try {
-        // Récupérer tous les mods de toutes les catégories
-        const allMods = [];
-        
-        for (const category of Object.keys(CHANNEL_IDS)) {
-            const categoryChannels = CHANNEL_IDS[category];
-            const channelsToFetch = Object.values(categoryChannels);
-            
-            for (const channelId of channelsToFetch) {
-                try {
-                    const channel = await client.channels.fetch(channelId);
-                    if (!channel) continue;
-                    
-                    const messages = await channel.messages.fetch({ limit: 100 });
-                    
-                    messages.forEach(message => {
-                        if (message.embeds && message.embeds.length > 0) {
-                            const embed = message.embeds[0];
-                            // Extraire les informations du mod
-                            const typeField = embed.fields.find(f => f.name === "🎯 Type de mod");
-                            let type = typeField ? typeField.value.trim() : category;
-                            let name = type || "Sans nom";
-                            
-                            // Extraire la description
-                            const descField = embed.fields.find(f => f.name === "┌─ Description ─┐");
-                            let description = "";
-                            if (descField && descField.value) {
-                                description = descField.value.split("▸")[1]?.trim() || 
-                                    "Aucune description fournie";
-                            }
-                            
-                            const modInfo = {
-                                id: message.id,
-                                name: name,
-                                category: category,
-                                type: type,
-                                description: description,
-                                image: embed.image?.url || null,
-                                downloadLink: message.components?.[0]?.components?.[0]?.url || "#",
-                                channelId: channelId,
-                                guildId: message.guildId,
-                                createdAt: message.createdTimestamp,
-                                discordLink: `https://discord.com/channels/${message.guildId}/${channelId}/${message.id}`
-                            };
-                            
-                            allMods.push(modInfo);
-                        }
-                    });
-                } catch (error) {
-                    console.error(`Erreur pour le channel ${channelId}:`, error);
-                }
-            }
-        }
-        
-        res.json({ success: true, mods: allMods });
-    } catch (error) {
-        console.error("Erreur générale lors de la récupération des mods:", error);
-        res.status(500).json({ success: false, error: "Erreur serveur" });
-    }
-});
-
-app.get('/api/admin/settings', (req, res) => {
-    try {
-        // Pour le moment, renvoie des paramètres par défaut
-        const settings = {
-            siteName: "SHOP-REPLACE",
-            siteDescription: "Mods GTA V Discord Shop",
-            discordServerUrl: "https://discord.gg/shopReplace",
-            termsUrl: "#",
-            privacyUrl: "#",
-            contactEmail: "contact@example.com",
-            theme: {
-                primary: "#00f7ff",
-                secondary: "#ffffff",
-                dark: "#252525"
-            }
-        };
-        res.json({ success: true, settings });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Erreur serveur' });
-    }
-});
-
-// Route pour mettre à jour les paramètres du site
-app.post('/api/admin/settings', (req, res) => {
-    try {
-        const { settings } = req.body;
-        // Ici on pourrait sauvegarder les paramètres dans un fichier
-        // Pour le moment, on répond simplement OK
-        res.json({ success: true, message: "Paramètres mis à jour avec succès" });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Erreur serveur' });
-    }
 });
