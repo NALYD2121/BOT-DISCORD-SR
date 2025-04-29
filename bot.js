@@ -397,8 +397,9 @@ app.post('/api/is-support-admin', async (req, res) => {
         if (!discordUserId) return res.status(400).json({ success: false, error: 'ID manquant' });
         const guild = client.guilds.cache.first();
         if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
-        const member = await guild.members.fetch(discordUserId);
+        const member = await guild.members.fetch(discordUserId).catch(() => null);
         if (!member) return res.status(404).json({ success: false, error: 'Membre introuvable' });
+        // Vérifie uniquement le rôle 1085616282172407838
         const hasRole = member.roles.cache.has('1085616282172407838');
         res.json({ success: true, isAdmin: hasRole });
     } catch (e) {
