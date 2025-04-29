@@ -124,6 +124,12 @@ const commands = [
         .setDescription("Arrête les rappels de bump"),
 ];
 
+// Ajout de la commande /reglement accessible à tous
+const reglementCommand = new SlashCommandBuilder()
+    .setName("reglement")
+    .setDescription("Affiche le règlement du serveur à accepter");
+commands.push(reglementCommand);
+
 // Ajout de la commande /activer-reglement
 const activateRulesCommand = new SlashCommandBuilder()
     .setName("activer-reglement")
@@ -636,26 +642,11 @@ client.once("ready", async () => {
 // Événement pour gérer les nouveaux membres
 client.on("guildMemberAdd", async (member) => {
     try {
-        const channel = member.guild.channels.cache.get(RULES_CHANNEL_ID);
-        if (!channel) return console.error("Canal des règles introuvable.");
-
-        const embed = new EmbedBuilder()
-            .setTitle("Bienvenue sur le serveur !")
-            .setDescription(
-                "Veuillez lire et accepter le règlement pour accéder au serveur. Cliquez sur le bouton ci-dessous pour accepter."
-            )
-            .setColor(0x00f7ff);
-
-        const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder()
-                .setCustomId("accept_rules")
-                .setLabel("Accepter le règlement")
-                .setStyle(ButtonStyle.Success)
-        );
-
-        await channel.send({ embeds: [embed], components: [row] });
+        // Ne rien faire automatiquement à l'arrivée d'un membre
+        // Les admins pourront toujours utiliser /activer-reglement quand nécessaire
+        console.log(`[INFO] Nouveau membre rejoint: ${member.user.tag} (${member.id})`);
     } catch (error) {
-        console.error("Erreur lors de l'envoi du message de bienvenue:", error);
+        console.error("Erreur lors du traitement du nouveau membre:", error);
     }
 });
 
@@ -664,15 +655,58 @@ client.on("interactionCreate", async (interaction) => {
     if (!interaction.isCommand() && !interaction.isButton()) return;
 
     if (interaction.isCommand()) {
-        // Vérifier si l'utilisateur a le rôle avec l'ID 1085616282172407838
+        const { commandName, options } = interaction;
+        
+        // Commandes accessibles à tous
+        if (commandName === "reglement") {
+            try {
+                const channel = interaction.channel;
+                
+                // Vérifier que la commande est utilisée dans le bon salon
+                if (channel.id !== RULES_CHANNEL_ID) {
+                    await interaction.reply({
+                        content: `Cette commande ne peut être utilisée que dans le salon <#${RULES_CHANNEL_ID}>.`,
+                        ephemeral: true
+                    });
+                    return;
+                }
+                
+                const embed = new EmbedBuilder()
+                    .setTitle("Bienvenue sur le serveur !")
+                    .setDescription(
+                        "Veuillez lire et accepter le règlement pour accéder au serveur. Cliquez sur le bouton ci-dessous pour accepter."
+                    )
+                    .setColor(0x00f7ff);
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder()
+                        .setCustomId("accept_rules")
+                        .setLabel("Accepter le règlement")
+                        .setStyle(ButtonStyle.Success)
+                );
+
+                await interaction.reply({
+                    embeds: [embed], 
+                    components: [row]
+                });
+                return;
+            } catch (error) {
+                console.error("Erreur lors de l'affichage du règlement:", error);
+                await interaction.reply({
+                    content: "Une erreur est survenue lors de l'affichage du règlement.",
+                    ephemeral: true,
+                });
+                return;
+            }
+        }
+        
+        // Vérifier si l'utilisateur a le rôle avec l'ID 1085616282172407838 pour les commandes admin
         const hasRequiredRole = interaction.member.roles.cache.has('1085616282172407838');
         
         if (!hasRequiredRole) {
             await interaction.reply({ content: "Tu n'as pas la permission d'utiliser cette commande. Seuls les utilisateurs avec le rôle requis peuvent l'utiliser.", ephemeral: true });
             return;
         }
-        
-        const { commandName, options } = interaction;
 
         switch (commandName) {
             case "bump":
