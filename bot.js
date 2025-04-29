@@ -1095,6 +1095,47 @@ app.post('/api/discord/sync-channel/:channelId', async (req, res) => {
     }
 });
 
+// Route pour récupérer les rôles d'un utilisateur
+app.post('/api/user-roles', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        if (!userId) {
+            return res.status(400).json({ success: false, error: 'ID utilisateur manquant' });
+        }
+
+        // Récupérer le membre depuis le serveur Discord
+        const guild = client.guilds.cache.first();
+        if (!guild) {
+            return res.status(404).json({ success: false, error: 'Serveur Discord non trouvé' });
+        }
+
+        try {
+            // Récupérer le membre et ses rôles
+            const member = await guild.members.fetch(userId);
+            if (!member) {
+                return res.status(404).json({ success: false, error: 'Membre introuvable' });
+            }
+
+            // Extraire les IDs des rôles
+            const roles = member.roles.cache.map(role => role.id);
+
+            // Vérifier spécifiquement le rôle admin
+            const isAdmin = roles.includes('1085616282172407838');
+
+            res.json({
+                success: true,
+                roles: roles,
+                isAdmin: isAdmin
+            });
+        } catch (memberError) {
+            console.error('Erreur lors de la récupération du membre:', memberError);
+            res.status(404).json({ success: false, error: 'Membre introuvable ou erreur Discord' });
+        }
+    } catch (error) {
+        console.error('Erreur lors de la récupération des rôles:', error);
+        res.status(500).json({ success: false, error: 'Erreur serveur' });
+    }
+});
 
 // Connexion du bot Discords
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
