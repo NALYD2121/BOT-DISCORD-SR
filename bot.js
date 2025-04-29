@@ -543,9 +543,61 @@ app.delete('/api/ticket/:id', async (req, res) => {
     }
 });
 
-// Événement de connexion du bot
+// Événement déclenché lorsque le bot est invité dans un nouveau serveur
+client.on('guildCreate', async (guild) => {
+    // Vérifier si le serveur est autorisé (uniquement le serveur principal)
+    const AUTHORIZED_GUILD_ID = "1084589741913153607"; // ID du serveur autorisé
+    
+    // Si ce n'est pas le serveur autorisé, quitter automatiquement
+    if (guild.id !== AUTHORIZED_GUILD_ID) {
+        console.log(`[SÉCURITÉ] Tentative d'ajout non autorisée au serveur: ${guild.name} (${guild.id}). Déconnexion automatique.`);
+        
+        try {
+            // Envoyer un message d'avertissement avant de quitter
+            const systemChannel = guild.systemChannel;
+            if (systemChannel) {
+                await systemChannel.send({
+                    content: "⚠️ Ce bot est privé et ne peut pas être ajouté à d'autres serveurs que celui pour lequel il a été conçu. Le bot va maintenant quitter ce serveur."
+                });
+            }
+            
+            // Quitter le serveur
+            await guild.leave();
+            console.log(`[SÉCURITÉ] Bot retiré du serveur non autorisé: ${guild.name} (${guild.id})`);
+        } catch (error) {
+            console.error(`[ERREUR] Impossible de quitter le serveur non autorisé: ${error.message}`);
+        }
+    }
+});
+
+// Au démarrage, vérifier également tous les serveurs actuels
 client.once("ready", async () => {
     console.log(`Bot connecté en tant que ${client.user.tag}`);
+    
+    // Vérifier tous les serveurs actuels
+    const AUTHORIZED_GUILD_ID = "1084589741913153607"; // ID du serveur autorisé
+    
+    client.guilds.cache.forEach(async (guild) => {
+        if (guild.id !== AUTHORIZED_GUILD_ID) {
+            console.log(`[SÉCURITÉ] Bot présent dans un serveur non autorisé: ${guild.name} (${guild.id}). Tentative de déconnexion...`);
+            
+            try {
+                // Envoyer un message d'avertissement avant de quitter
+                const systemChannel = guild.systemChannel;
+                if (systemChannel) {
+                    await systemChannel.send({
+                        content: "⚠️ Ce bot est privé et ne peut pas être ajouté à d'autres serveurs que celui pour lequel il a été conçu. Le bot va maintenant quitter ce serveur."
+                    });
+                }
+                
+                // Quitter le serveur
+                await guild.leave();
+                console.log(`[SÉCURITÉ] Bot retiré du serveur non autorisé: ${guild.name} (${guild.id})`);
+            } catch (error) {
+                console.error(`[ERREUR] Impossible de quitter le serveur non autorisé: ${error.message}`);
+            }
+        }
+    });
 
     try {
         // Enregistrement des commandes slash pour la guild (serveur) spécifique
@@ -612,11 +664,14 @@ client.on("interactionCreate", async (interaction) => {
     if (!interaction.isCommand() && !interaction.isButton()) return;
 
     if (interaction.isCommand()) {
-        // Limiter l'accès aux commandes à l'utilisateur 1015310406169923665
-        if (interaction.user.id !== '1015310406169923665') {
-            await interaction.reply({ content: 'Tu n’as pas la permission d’utiliser cette commande.', ephemeral: true });
+        // Vérifier si l'utilisateur a le rôle avec l'ID 1085616282172407838
+        const hasRequiredRole = interaction.member.roles.cache.has('1085616282172407838');
+        
+        if (!hasRequiredRole) {
+            await interaction.reply({ content: "Tu n'as pas la permission d'utiliser cette commande. Seuls les utilisateurs avec le rôle requis peuvent l'utiliser.", ephemeral: true });
             return;
         }
+        
         const { commandName, options } = interaction;
 
         switch (commandName) {
