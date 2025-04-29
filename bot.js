@@ -1137,6 +1137,46 @@ app.post('/api/user-roles', async (req, res) => {
     }
 });
 
+// Ajouter un nouveau endpoint pour récupérer les canaux par catégorie
+app.get('/api/discord/channels-by-category/:category', (req, res) => {
+    try {
+        const category = req.params.category.toUpperCase();
+        console.log(`[API] Demande de canaux Discord pour la catégorie: ${category}`);
+        
+        // Récupérer les canaux Discord pour la catégorie spécifiée
+        const categoryChannels = CHANNEL_IDS[category];
+        
+        if (!categoryChannels) {
+            return res.status(404).json({
+                success: false,
+                error: 'Catégorie non trouvée'
+            });
+        }
+        
+        // Transformer l'objet des canaux en tableau
+        const channels = Object.entries(categoryChannels).map(([subtype, id]) => {
+            return {
+                id: id,
+                name: subtype,
+                subtype: subtype
+            };
+        });
+        
+        console.log(`[API] ${channels.length} canaux trouvés pour la catégorie ${category}`);
+        
+        return res.json({
+            success: true,
+            channels: channels
+        });
+    } catch (error) {
+        console.error(`[API] Erreur lors de la récupération des canaux pour la catégorie ${req.params.category}:`, error);
+        return res.status(500).json({
+            success: false,
+            error: 'Erreur serveur'
+        });
+    }
+});
+
 // Connexion du bot Discords
 client.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error("Erreur de connexion au bot Discord:", error);
