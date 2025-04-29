@@ -15,26 +15,6 @@ const cors = require("cors");
 const axios = require("axios");
 const fs = require("fs");
 const TICKETS_FILE = path.join(__dirname, 'tickets.json');
-const DISCORD_USERS_FILE = path.join(__dirname, 'discord_users.json');
-const DOWNLOADS_FILE = path.join(__dirname, 'downloads.json');
-function readDiscordUsers() {
-    try {
-        if (!fs.existsSync(DISCORD_USERS_FILE)) return [];
-        return JSON.parse(fs.readFileSync(DISCORD_USERS_FILE, 'utf8'));
-    } catch (e) { return []; }
-}
-function writeDiscordUsers(users) {
-    fs.writeFileSync(DISCORD_USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
-}
-function readDownloads() {
-    try {
-        if (!fs.existsSync(DOWNLOADS_FILE)) return [];
-        return JSON.parse(fs.readFileSync(DOWNLOADS_FILE, 'utf8'));
-    } catch (e) { return []; }
-}
-function writeDownloads(logs) {
-    fs.writeFileSync(DOWNLOADS_FILE, JSON.stringify(logs, null, 2), 'utf8');
-}
 
 // Ajout d'un cache simple pour limiter les appels à Discord (5 min)
 const memberCheckCache = new Map(); // key: token, value: {isMember, user, expires}
@@ -84,36 +64,6 @@ const upload = multer({
 
 // Stockage des rappels bump
 const bumpReminders = new Map();
-
-// Fonction optimisée pour gérer les rappels bump
-function scheduleBumpReminder(guildId, channelId) {
-    // Annuler tout rappel existant pour ce canal
-    if (bumpReminders.has(channelId)) {
-        clearTimeout(bumpReminders.get(channelId));
-    }
-    
-    // Planifier un nouveau rappel (2 heures = 7200000 ms)
-    const reminderId = setTimeout(async () => {
-        try {
-            const channel = client.channels.cache.get(channelId);
-            if (!channel) return;
-            
-            // Utiliser une seule opération d'envoi de message pour économiser les ressources
-            await channel.send({
-                content: `<@&1085593176072835092> Le bump est de nouveau disponible !`,
-                allowedMentions: { roles: ['1085593176072835092'] }
-            });
-            
-            // Supprimer ce rappel de la carte après son exécution
-            bumpReminders.delete(channelId);
-        } catch (error) {
-            console.error('Erreur lors de l\'envoi du rappel de bump:', error);
-        }
-    }, 7200000);
-    
-    // Stocker l'ID du timeout pour annulation ultérieure si nécessaire
-    bumpReminders.set(channelId, reminderId);
-}
 
 // Configuration des IDs des canaux Discord
 const CHANNEL_IDS = {
@@ -185,6 +135,22 @@ const ticketButtonCommand = new SlashCommandBuilder()
     .setName("ticket")
     .setDescription("Envoie le bouton pour ouvrir un ticket dans le salon support");
 commands.push(ticketButtonCommand);
+
+// Fonction pour envoyer un rappel de bump
+async function sendBumpReminder(channelId) {
+    try {
+        const channel = await client.channels.fetch(channelId);
+        if (channel) {
+            await channel.send({
+                content:
+                    "@everyone C'est l'heure de bump ! Utilisez `/bump` pour augmenter la visibilité du serveur !",
+                allowedMentions: { parse: ["everyone"] },
+            });
+        }
+    } catch (error) {
+        console.error("Erreur lors de l'envoi du rappel:", error);
+    }
+}
 
 // Middleware pour parser le JSON
 app.use(express.json());
@@ -527,8 +493,7 @@ app.post('/api/ticket', async (req, res) => {
             sujet,
             description,
             status: 'ouvert',
-            createdAt: now,
-            customStatus: 'En attente'
+            createdAt: now
         };
         tickets.push(ticket);
         writeTickets(tickets);
@@ -576,20 +541,6 @@ app.delete('/api/ticket/:id', async (req, res) => {
     }
 });
 
-// Route pour changer le statut personnalisé d'un ticket
-app.post('/api/ticket/:id/status', (req, res) => {
-    const { id } = req.params;
-    const { customStatus } = req.body;
-    const allowed = ['En attente', 'En cours', 'Résolu', 'Fermé'];
-    if (!allowed.includes(customStatus)) return res.status(400).json({ success: false, error: 'Statut invalide' });
-    let tickets = readTickets();
-    const ticketIndex = tickets.findIndex(t => t.id === id);
-    if (ticketIndex === -1) return res.status(404).json({ success: false, error: 'Ticket introuvable' });
-    tickets[ticketIndex].customStatus = customStatus;
-    writeTickets(tickets);
-    res.json({ success: true });
-});
-
 // Événement de connexion du bot
 client.once("ready", async () => {
     console.log(`Bot connecté en tant que ${client.user.tag}`);
@@ -631,7 +582,6 @@ client.once("ready", async () => {
 // Événement pour gérer les nouveaux membres
 client.on("guildMemberAdd", async (member) => {
     try {
-        // Message dans le salon des règles
         const channel = member.guild.channels.cache.get(RULES_CHANNEL_ID);
         if (!channel) return console.error("Canal des règles introuvable.");
 
@@ -650,29 +600,6 @@ client.on("guildMemberAdd", async (member) => {
         );
 
         await channel.send({ embeds: [embed], components: [row] });
-        
-        // Nouveau code : Envoyer un message de bienvenue personnalisé en MP
-        try {
-            const welcomeEmbed = new EmbedBuilder()
-                .setTitle(`🎉 Bienvenue sur SHOP REPLACE, ${member.user.username} !`)
-                .setDescription(
-                    "Merci de nous avoir rejoint ! Notre serveur est dédié aux remplacements de haute qualité pour GTA V.\n\n" +
-                    "✅ Voici ce que tu peux faire maintenant :\n" +
-                    "• Accepter le règlement dans <#" + RULES_CHANNEL_ID + "> pour accéder au serveur\n" +
-                    "• Explorer notre large catalogue de mods dans les différents salons\n" +
-                    "• Ouvrir un ticket dans le salon support si tu as des questions\n\n" +
-                    "Nous espérons que tu trouveras des mods qui te plaisent !"
-                )
-                .setColor(0x00f7ff)
-                .setImage("https://cdn.discordapp.com/avatars/" + client.user.id + "/" + client.user.avatar + ".png")
-                .setFooter({ text: "SHOP REPLACE • " + new Date().toLocaleDateString("fr-FR") });
-
-            await member.user.send({ embeds: [welcomeEmbed] });
-            console.log(`Message de bienvenue en MP envoyé à ${member.user.tag}`);
-        } catch (error) {
-            console.error(`Impossible d'envoyer un MP à ${member.user.tag}:`, error);
-            // En cas d'échec (utilisateur a désactivé ses MPs), on ne fait rien mais on continue
-        }
     } catch (error) {
         console.error("Erreur lors de l'envoi du message de bienvenue:", error);
     }
@@ -926,105 +853,6 @@ app.get("/api/mods/:id", async (req, res) => {
     } catch (error) {
         console.error("Erreur lors de la récupération du mod:", error);
         res.status(500).json({ error: "Erreur serveur" });
-    }
-});
-
-// Route pour stats dashboard admin : nombre de mods par catégorie
-app.get('/api/admin-stats', async (req, res) => {
-    try {
-        // On compte les messages (mods) dans chaque catégorie
-        const result = { armes: 0, vehicules: 0, peds: 0, total: 0 };
-        const catMap = {
-            ARME: 'armes',
-            VEHICULE: 'vehicules',
-            PERSONNAGE: 'peds'
-        };
-        for (const [cat, label] of Object.entries(catMap)) {
-            let count = 0;
-            const channels = Object.values(CHANNEL_IDS[cat] || {});
-            for (const channelId of channels) {
-                try {
-                    const channel = await client.channels.fetch(channelId);
-                    if (!channel) continue;
-                    const messages = await channel.messages.fetch({ limit: 100 });
-                    // On ne compte que les messages avec embed (donc des mods)
-                    count += Array.from(messages.values()).filter(m => m.embeds && m.embeds.length > 0).length;
-                } catch {}
-            }
-            result[label] = count;
-            result.total += count;
-        }
-        res.json({ success: true, stats: result });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Erreur stats admin' });
-    }
-});
-
-// Enregistrer un téléchargement
-app.post('/api/log-download', (req, res) => {
-    const { userId, username, modName, modId, date } = req.body;
-    if (!userId || !modName || !date) return res.status(400).json({ success: false, error: 'Champs manquants' });
-    let logs = readDownloads();
-    logs.push({ userId, username, modName, modId, date });
-    writeDownloads(logs);
-    res.json({ success: true });
-});
-
-// Récupérer les logs de téléchargement (admin)
-app.get('/api/download-logs', (req, res) => {
-    const logs = readDownloads();
-    res.json({ success: true, logs });
-});
-
-// Enregistrer chaque connexion Discord
-app.post('/api/discord-login', (req, res) => {
-    const { id, username, discriminator, avatar } = req.body;
-    if (!id || !username) return res.status(400).json({ success: false, error: 'Champs manquants' });
-    let users = readDiscordUsers();
-    const existing = users.find(u => u.id === id);
-    if (existing) {
-        existing.lastLogin = Date.now();
-        existing.username = username;
-        existing.discriminator = discriminator;
-        existing.avatar = avatar;
-    } else {
-        users.push({ id, username, discriminator, avatar, lastLogin: Date.now() });
-    }
-    writeDiscordUsers(users);
-    res.json({ success: true });
-});
-
-// Récupérer la liste des utilisateurs connectés
-app.get('/api/discord-users', (req, res) => {
-    const users = readDiscordUsers();
-    res.json({ success: true, users });
-});
-
-// Répondre à un ticket (envoi dans le salon du ticket Discord + historique)
-app.post('/api/ticket/:id/reply', async (req, res) => {
-    const { id } = req.params;
-    const { message, admin } = req.body;
-    if (!message) return res.status(400).json({ success: false, error: 'Message manquant' });
-    let tickets = readTickets();
-    const ticketIndex = tickets.findIndex(t => t.id === id);
-    if (ticketIndex === -1) return res.status(404).json({ success: false, error: 'Ticket introuvable' });
-    try {
-        const guild = client.guilds.cache.first();
-        if (!guild) return res.status(500).json({ success: false, error: 'Bot non connecté à un serveur' });
-        const channel = guild.channels.cache.get(id);
-        if (!channel) return res.status(404).json({ success: false, error: 'Salon du ticket introuvable' });
-        await channel.send(`Réponse du support :\n${message}`);
-        // Ajout à l'historique
-        if (!tickets[ticketIndex].history) tickets[ticketIndex].history = [];
-        tickets[ticketIndex].history.push({
-            message,
-            admin: admin || 'admin',
-            date: Date.now()
-        });
-        writeTickets(tickets);
-        res.json({ success: true });
-    } catch (e) {
-        res.status(500).json({ success: false, error: 'Impossible d\'envoyer le message dans le salon du ticket' });
     }
 });
 
