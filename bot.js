@@ -743,20 +743,38 @@ client.on("interactionCreate", async (interaction) => {
                 });
             }
         } else if (interaction.customId === 'close_ticket') {
-            // Vérifier que c'est bien dans un channel support
-            if (interaction.channel.parentId === '1364246550561165413') {
-                let tickets = readTickets();
-                const ticket = tickets.find(t => t.id === interaction.channel.id && t.status === 'ouvert');
-                if (ticket) {
-                    // Fermer le ticket (supprimer le channel, notifier l'utilisateur)
-                    try {
-                        const user = await client.users.fetch(ticket.userId);
-                        await user.send('Votre ticket a été fermé par le support. Merci de ne pas répondre à ce ticket fermé, sous peine de sanction (ban). Si besoin, ouvrez un nouveau ticket.');
-                    } catch (e) { /* ignore erreur DM */ }
-                    // Mettre à jour le ticket (status fermé) AVANT de supprimer le channel
-                    tickets = tickets.map(t => t.id === interaction.channel.id ? { ...t, status: 'ferme', closedAt: Date.now() } : t);
-                    writeTickets(tickets);
-                    await interaction.channel.delete('Ticket fermé via bouton Discord');
+            try {
+                // Répondre immédiatement à l'interaction pour éviter "Échec de l'interaction"
+                await interaction.reply({ content: "Fermeture du ticket en cours...", ephemeral: true });
+                
+                // Vérifier que c'est bien dans un channel support
+                if (interaction.channel.parentId === '1364246550561165413') {
+                    let tickets = readTickets();
+                    const ticket = tickets.find(t => t.id === interaction.channel.id && t.status === 'ouvert');
+                    if (ticket) {
+                        // Fermer le ticket (supprimer le channel, notifier l'utilisateur)
+                        try {
+                            const user = await client.users.fetch(ticket.userId);
+                            await user.send('Votre ticket a été fermé par le support. Merci de ne pas répondre à ce ticket fermé, sous peine de sanction (ban). Si besoin, ouvrez un nouveau ticket.');
+                        } catch (e) { /* ignore erreur DM */ }
+                        // Mettre à jour le ticket (status fermé) AVANT de supprimer le channel
+                        tickets = tickets.map(t => t.id === interaction.channel.id ? { ...t, status: 'ferme', closedAt: Date.now() } : t);
+                        writeTickets(tickets);
+                        // Petit délai pour s'assurer que la réponse à l'interaction est envoyée
+                        setTimeout(async () => {
+                            await interaction.channel.delete('Ticket fermé via bouton Discord');
+                        }, 500);
+                    } else {
+                        await interaction.editReply({ content: "Ce ticket n'est pas ouvert ou n'existe pas.", ephemeral: true });
+                    }
+                }
+            } catch (error) {
+                console.error("Erreur lors de la fermeture du ticket:", error);
+                try {
+                    await interaction.editReply({ content: "Une erreur est survenue lors de la fermeture du ticket.", ephemeral: true });
+                } catch (e) {
+                    // Si la réponse initiale a échoué
+                    console.error("Impossible de notifier l'erreur:", e);
                 }
             }
         } else if (interaction.customId === 'open_ticket') {
