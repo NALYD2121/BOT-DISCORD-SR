@@ -41,7 +41,11 @@ process.on("unhandledRejection", (error) => {
 // Configuration du serveur Express
 const app = express();
 
-const allowedOrigins = ['https://nalyd2121.github.io', null];
+const allowedOrigins = [
+    'https://nalyd2121.github.io',
+    'https://shop-replaces.vercel.app', // Ajout de ton site Vercel
+    null
+];
 
 // Configuration CORS avec options plus permissives
 app.use(cors({
