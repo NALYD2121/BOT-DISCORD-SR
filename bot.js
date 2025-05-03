@@ -44,6 +44,7 @@ const app = express();
 const allowedOrigins = [
     'https://nalyd2121.github.io',
     'https://shop-replaces.vercel.app', // Ajout de ton site Vercel
+    'http://localhost', // dev appliqtion
     null
 ];
 
